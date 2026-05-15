@@ -1,0 +1,659 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" type="image/png" href="assets/img/favicon.png" />
+  <title>Paint Master — Paint Masters</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/styles.css" />
+  <style>
+    /* Painter dashboard — visual language matches my.html (customer dashboard)
+       so the design system stays cohesive across roles. The 28-day calendar
+       is the same component the admin sees on the painter detail modal,
+       lifted here as the painter's own self-service view. */
+    .painter-hero {
+      background:
+        radial-gradient(900px 400px at 90% 0%, rgba(46,93,58,0.18), transparent 60%),
+        linear-gradient(180deg, #F7FAFD 0%, #FFFFFF 90%);
+      padding: 56px 24px 24px;
+    }
+    .painter-hero h1 { margin: 6px 0 6px; }
+    .painter-hero .lede { color: var(--ink-700); max-width: 620px; }
+
+    .stat-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-top: 28px; }
+    @media (max-width: 760px) { .stat-row { grid-template-columns: repeat(2, 1fr); } }
+    .stat-card { background: #fff; border: 1px solid var(--ink-100); border-radius: 14px; padding: 18px 20px; }
+    .stat-card .lbl  { font-size: 0.78rem; color: var(--ink-500); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }
+    .stat-card .val  { font-family: var(--font-display); font-size: 1.8rem; color: var(--navy-900); margin-top: 4px; font-weight: 700; }
+    .stat-card .delta{ font-size: 0.78rem; color: var(--green); margin-top: 2px; }
+
+    .grid-2 { display: grid; grid-template-columns: 1.4fr 1fr; gap: 24px; align-items: start; }
+    @media (max-width: 980px) { .grid-2 { grid-template-columns: 1fr; } }
+
+    .panel { background: #fff; border: 1px solid var(--ink-100); border-radius: 14px; padding: 20px 22px; }
+    .panel + .panel { margin-top: 16px; }
+    .panel h3 { margin: 0; }
+    .panel .panel-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 8px; }
+
+    /* Today's assignment card — bigger, friendlier, with three actions inline. */
+    .today-card {
+      border-radius: 14px; padding: 20px 22px; color: #fff;
+      background: linear-gradient(135deg, var(--navy-900), var(--navy-700));
+      display: grid; grid-template-columns: 1fr auto; gap: 18px; align-items: center;
+    }
+    .today-card .ref-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .today-card .pill {
+      background: rgba(255,255,255,0.15); padding: 4px 10px; border-radius: 999px;
+      font-size: 0.72rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+    }
+    .today-card h3 { color: #fff; margin: 8px 0 4px; font-size: 1.4rem; line-height: 1.15; }
+    .today-card .meta { color: rgba(255,255,255,0.82); font-size: 0.92rem; }
+    .today-card .actions { display: flex; flex-direction: column; gap: 8px; }
+    .today-card .actions .btn { padding: 10px 18px; font-size: 0.88rem; min-width: 160px; }
+    @media (max-width: 700px) { .today-card { grid-template-columns: 1fr; } .today-card .actions .btn { min-width: 0; } }
+    .today-empty { background: var(--ink-50); color: var(--ink-700); border: 1px dashed var(--ink-300); padding: 24px; border-radius: 14px; text-align: center; }
+
+    /* 28-day calendar grid — same look as admin/openArtisanCalendar so the
+       painter and admin literally see the same view. */
+    .pcal-weekdays {
+      display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px;
+      font-size: 0.7rem; font-weight: 700; letter-spacing: 0.06em;
+      text-transform: uppercase; color: var(--ink-500); text-align: center; margin-bottom: 6px;
+    }
+    .pcal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+    .pcal-day {
+      aspect-ratio: 1/1; border-radius: 8px; padding: 6px;
+      display: flex; flex-direction: column; justify-content: space-between;
+      background: var(--ink-50); color: var(--ink-700);
+      border: 1px solid transparent;
+      transition: transform 0.06s, box-shadow 0.15s;
+    }
+    .pcal-day.empty { background: transparent; }
+    .pcal-day.booked  { background: var(--gold-500); color: #fff; cursor: pointer; }
+    .pcal-day.busy    { background: rgba(215, 38, 61, 0.85); color: #fff; }
+    .pcal-day.today   { outline: 2px solid var(--navy-900); }
+    .pcal-day.booked:hover, .pcal-day.busy:hover { transform: translateY(-1px); box-shadow: var(--shadow); }
+    .pcal-day .num   { font-size: 0.74rem; font-weight: 700; }
+    .pcal-day .ref   { font-size: 0.66rem; font-weight: 600; line-height: 1.1; text-align: right; }
+    .pcal-legend { display: flex; gap: 14px; margin-top: 14px; font-size: 0.78rem; color: var(--ink-500); }
+    .pcal-legend .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 3px; vertical-align: middle; margin-right: 5px; }
+
+    /* Upcoming list */
+    .up-row {
+      display: grid; grid-template-columns: 64px 1fr auto; gap: 12px; align-items: center;
+      padding: 12px; border: 1px solid var(--ink-100); border-radius: 12px;
+      margin-bottom: 8px; transition: border-color 0.15s;
+    }
+    .up-row:hover { border-color: var(--ink-300); cursor: pointer; }
+    .up-row .date {
+      text-align: center; padding: 6px 8px; border-radius: 8px;
+      background: var(--ink-50); color: var(--navy-900);
+    }
+    .up-row .date .d  { font-family: var(--font-display); font-size: 1.3rem; font-weight: 700; line-height: 1; }
+    .up-row .date .m  { font-size: 0.72rem; color: var(--ink-500); text-transform: uppercase; letter-spacing: 0.06em; }
+    .up-row .ref-line { font-size: 0.78rem; color: var(--ink-500); }
+    .up-row strong    { display: block; color: var(--navy-900); font-size: 0.96rem; }
+    .up-row .right    { text-align: right; }
+    .up-row .stage    { font-size: 0.72rem; padding: 3px 9px; border-radius: 999px; font-weight: 600; }
+    .stage-dispatched { background: #DBEAFE; color: #1E3A8A; }
+    .stage-on-site    { background: #FEF3C7; color: #854D0E; }
+    .stage-qa         { background: #FCE7F3; color: #831843; }
+    .stage-scheduled  { background: #E0E7FF; color: #3730A3; }
+    .stage-completed  { background: #D1FAE5; color: #065F46; }
+
+    /* Earnings teaser — values placeholder until Phase 2 ships the
+       earnings ledger. The card is intentionally factual about what's still
+       coming so the painter knows what to expect. */
+    .earnings-card {
+      background: linear-gradient(135deg, #1E7F4F, #166042); color: #fff;
+      border-radius: 14px; padding: 20px 22px;
+    }
+    .earnings-card .row { display: flex; justify-content: space-between; align-items: baseline; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.18); }
+    .earnings-card .row:last-of-type { border-bottom: 0; }
+    .earnings-card .row .lbl { color: rgba(255,255,255,0.78); font-size: 0.86rem; }
+    .earnings-card .row .val { font-family: var(--font-display); font-weight: 700; font-size: 1.05rem; }
+    .earnings-card .note { font-size: 0.78rem; color: rgba(255,255,255,0.7); margin-top: 12px; line-height: 1.5; }
+
+    /* Job popover (clicked from a calendar tile) */
+    .pop-back { position: fixed; inset: 0; background: rgba(11,31,58,0.5); display: none; align-items: center; justify-content: center; z-index: 1000; padding: 16px; }
+    .pop-back.show { display: flex; }
+    .pop {
+      background: #fff; border-radius: var(--radius-lg); max-width: 460px; width: 100%;
+      box-shadow: var(--shadow-lg); overflow: hidden;
+    }
+    .pop-head { padding: 20px 24px 12px; border-bottom: 1px solid var(--ink-100); }
+    .pop-head h3 { margin: 0 0 4px; }
+    .pop-head .small { color: var(--ink-500); }
+    .pop-body { padding: 18px 24px; display: flex; flex-direction: column; gap: 10px; font-size: 0.94rem; }
+    .pop-body .row { display: flex; justify-content: space-between; gap: 10px; }
+    .pop-body .row .lbl { color: var(--ink-500); }
+    .pop-actions { display: flex; gap: 8px; padding: 14px 24px 20px; border-top: 1px solid var(--ink-100); flex-wrap: wrap; }
+    .pop-actions .btn { padding: 9px 14px; font-size: 0.86rem; }
+
+    .pm-toast {
+      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+      background: var(--navy-900); color: #fff;
+      padding: 10px 18px; border-radius: 999px; font-weight: 600; font-size: 0.92rem;
+      box-shadow: var(--shadow);
+      opacity: 0; transition: opacity 0.18s, transform 0.18s;
+      z-index: 1100; pointer-events: none;
+    }
+    .pm-toast.show { opacity: 1; transform: translateX(-50%) translateY(-4px); }
+  </style>
+</head>
+<body>
+  <div id="pm-nav"></div>
+
+  <!-- Painter-only gate. role:painter is required; everyone else gets bounced. -->
+  <script src="assets/shared.js"></script>
+  <script>
+    const me = pmRequireAuth({ roles: ['painter'] });
+    if (!me) { /* redirect in flight */ }
+  </script>
+
+  <section class="painter-hero">
+    <div class="container">
+      <span class="eyebrow">Paint Master dashboard</span>
+      <h1 id="welcomeTitle">Good day.</h1>
+      <p class="lede" id="welcomeSub">Here's what's on your books — today's job up top, the next 28 days at a glance, and the pipeline behind that.</p>
+
+      <div class="stat-row">
+        <div class="stat-card"><div class="lbl">Today</div>           <div class="val" id="statTodayCount">—</div><div class="delta" id="statTodaySub">Scheduled jobs</div></div>
+        <div class="stat-card"><div class="lbl">This week</div>       <div class="val" id="statWeekCount">—</div> <div class="delta" id="statWeekSub">Jobs to deliver</div></div>
+        <div class="stat-card"><div class="lbl">On-time %</div>       <div class="val" id="statOnTime">96%</div>   <div class="delta">Last 90 days</div></div>
+        <div class="stat-card"><div class="lbl">Customer rating</div> <div class="val" id="statRating">★ 4.9</div>  <div class="delta">Last 90 days</div></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" style="padding-top:24px;">
+    <div class="container">
+      <!-- Today's assignment — full-width band above the two-col grid. -->
+      <div id="todayHost" style="margin-bottom:20px;"></div>
+
+      <div class="grid-2">
+        <!-- Calendar + upcoming -->
+        <div>
+          <div class="panel">
+            <div class="panel-head">
+              <h3>Next 28 days</h3>
+              <span class="small" style="color:var(--ink-500);">Tap a booked day for the job details.</span>
+            </div>
+            <div class="pcal-weekdays" id="pcalWeek"></div>
+            <div class="pcal-grid"     id="pcalGrid"></div>
+            <div class="pcal-legend">
+              <span><span class="swatch" style="background:var(--ink-50);border:1px solid var(--ink-100);"></span>Free</span>
+              <span><span class="swatch" style="background:var(--gold-500);"></span>Booked</span>
+              <span><span class="swatch" style="background:rgba(215,38,61,0.85);"></span>Busy / Leave</span>
+              <span><span class="swatch" style="background:transparent;border:2px solid var(--navy-900);"></span>Today</span>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head">
+              <h3>Upcoming</h3>
+              <span class="small" style="color:var(--ink-500);">Next 5 jobs on your books.</span>
+            </div>
+            <div id="upcomingList"></div>
+          </div>
+        </div>
+
+        <!-- Notifications + Earnings + quick links -->
+        <div>
+          <!-- Notifications module — bell badge + scrollable list. Driven
+               by pmActivity (cross-tab); admin actions like 'job assigned'
+               or 'message from dispatcher' show up here as a card with a
+               summary of the job. Click 'View' to jump to the job popover. -->
+          <div class="panel" style="margin-bottom:16px;">
+            <div class="panel-head">
+              <h3>Notifications <span id="notifBadge" style="display:none;background:var(--red);color:#fff;font-size:0.62rem;font-weight:700;padding:2px 7px;border-radius:999px;margin-left:6px;vertical-align:middle;">0</span></h3>
+              <button id="notifMarkRead" class="small" style="background:transparent;border:0;color:var(--navy-900);font-weight:600;cursor:pointer;font-size:0.78rem;">Mark all read</button>
+            </div>
+            <div id="notifList" style="max-height:340px;overflow-y:auto;padding:0 6px;"></div>
+          </div>
+
+          <div class="earnings-card">
+            <h3 style="color:#fff;margin:0 0 12px;">Commission — this month</h3>
+            <div class="row"><span class="lbl">Jobs delivered</span><span class="val" id="earnJobs">—</span></div>
+            <div class="row"><span class="lbl">Commission (<span id="earnRateLabel">90%</span>)</span><span class="val" id="earnNet">GHS —</span></div>
+            <div class="row"><span class="lbl">Warranty hold (5%)</span><span class="val" id="earnHold">GHS —</span></div>
+            <div class="row"><span class="lbl">Released to you</span><span class="val" id="earnReleased">GHS —</span></div>
+            <p class="note">You're a contractor on commission. Each completed job releases the commission above (less the warranty hold) after the 7-day holdback. The warranty hold returns to you 90 days later with no claim. WHT 7.5% is deducted on payout and we file it with GRA on your behalf — you settle income tax separately at year-end.</p>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head"><h3>Your profile</h3></div>
+            <div style="display:grid;gap:10px;">
+              <div style="display:flex;justify-content:space-between;font-size:0.9rem;"><span style="color:var(--ink-500);">Name</span>      <strong id="pName">—</strong></div>
+              <div style="display:flex;justify-content:space-between;font-size:0.9rem;"><span style="color:var(--ink-500);">Phone</span>     <strong id="pPhone">—</strong></div>
+              <div style="display:flex;justify-content:space-between;font-size:0.9rem;"><span style="color:var(--ink-500);">Region</span>    <strong id="pRegion">—</strong></div>
+              <div style="display:flex;justify-content:space-between;font-size:0.9rem;"><span style="color:var(--ink-500);">Specialties</span><strong id="pSpec">—</strong></div>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:14px;">
+              <a href="track.html" class="btn btn-outline" style="flex:1;padding:10px;font-size:0.85rem;">Open dispatcher chat</a>
+              <a href="#" class="btn btn-outline" id="signOutBtn" style="padding:10px 14px;font-size:0.85rem;">Sign out</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Tile-click popover -->
+  <div class="pop-back" id="popBack" role="dialog" aria-modal="true">
+    <div class="pop">
+      <div class="pop-head">
+        <h3 id="popTitle">Job</h3>
+        <span class="small" id="popRef">PM-000000</span>
+      </div>
+      <div class="pop-body" id="popBody"></div>
+      <div class="pop-actions" id="popActions"></div>
+    </div>
+  </div>
+
+  <div class="pm-toast" id="pmToast" role="status" aria-live="polite">Saved</div>
+
+  <div id="pm-footer"></div>
+
+  <script>
+    pmMountLayout('painter');
+
+    // Greeting tailored to the painter, not the customer.
+    if (me && me.name) {
+      const first = me.name.split(' ')[0];
+      const hour = new Date().getHours();
+      const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+      document.getElementById('welcomeTitle').textContent = `${greeting}, ${first}.`;
+      document.getElementById('pName').textContent  = me.name;
+      document.getElementById('pPhone').textContent = me.phone || '—';
+      document.getElementById('pRegion').textContent = me.region || '—';
+    }
+
+    // ─────────────────────────────────────────────
+    // Demo job seed for the signed-in painter. Mirrors the SEED_JOBS shape
+    // used on the admin side but lives in this file so painter.html doesn't
+    // depend on admin/assets/admin-shared.js (admin-only). Replaced by a
+    // GET /api/painters/me/jobs fetch when that endpoint ships.
+    //
+    // Dates are computed relative to today so the demo always has 'today',
+    // 'this week', and 'next month' jobs without manual date editing.
+    // ─────────────────────────────────────────────
+    function isoOffset(days) {
+      const d = new Date(); d.setHours(0,0,0,0); d.setDate(d.getDate() + days);
+      return d.toISOString().slice(0,10);
+    }
+    // Production deployments start with an empty job list (no demo data).
+    // GET /api/painters/me/jobs will replace this when the route ships.
+    const PAINTER_JOBS_DEMO = (typeof PM_IS_PRODUCTION !== 'undefined' && PM_IS_PRODUCTION) ? [] : [
+      // Today + active
+      { ref:'PM-481905', stage:'on_site',    date:isoOffset(0),  endDate:isoOffset(0),  service:'Interior Wall Repaint', customer:'Ekow Quansah',  city:'Accra',   address:'12 Josif Broz Tito Ave, East Legon', amount:3850, durationDays:1, window:'Morning' },
+      // Tomorrow
+      { ref:'PM-482010', stage:'dispatched', date:isoOffset(1),  endDate:isoOffset(1),  service:'Decorative Faux Finish', customer:'Vida Akuffo',   city:'Accra',   address:'7 Boundary Rd, Cantonments',          amount:5200, durationDays:1, window:'Morning' },
+      // This week
+      { ref:'PM-482014', stage:'scheduled',  date:isoOffset(3),  endDate:isoOffset(4),  service:'Exterior Refresh',       customer:'Mr. Kwame Osei', city:'Accra',  address:'Estates GH HQ, Spintex',              amount:9800, durationDays:2, window:'All-day' },
+      { ref:'PM-482022', stage:'scheduled',  date:isoOffset(5),  endDate:isoOffset(5),  service:'Interior Wall Repaint',  customer:'Ama Mensah',     city:'Accra',  address:'Mensah Fabrics, Osu',                 amount:4400, durationDays:1, window:'Afternoon' },
+      // Next week+
+      { ref:'PM-482031', stage:'scheduled',  date:isoOffset(9),  endDate:isoOffset(9),  service:'Decorative Faux Finish', customer:'Comfort Asare',  city:'Accra',  address:'18 Lagos Ave, Labone',                amount:6100, durationDays:1, window:'Morning' },
+      { ref:'PM-482045', stage:'scheduled',  date:isoOffset(14), endDate:isoOffset(14), service:'Interior Wall Repaint',  customer:'Akwesi Dwomoh',  city:'Accra',  address:'4 Achimota Ridge',                    amount:3200, durationDays:1, window:'Morning' },
+      // Recently delivered (drives the earnings card)
+      { ref:'PM-481890', stage:'completed', date:isoOffset(-3),  endDate:isoOffset(-3), service:'Interior Wall Repaint',  customer:'Nana Adwoa',     city:'Accra',  address:'33 Adabraka',                         amount:4100, durationDays:1, window:'Morning' },
+      { ref:'PM-481872', stage:'completed', date:isoOffset(-9),  endDate:isoOffset(-8), service:'Exterior Refresh',       customer:'Stanbic Office', city:'Accra',  address:'Stanbic Heights, Airport City',       amount:7800, durationDays:2, window:'All-day' },
+      { ref:'PM-481855', stage:'completed', date:isoOffset(-15), endDate:isoOffset(-15),service:'Interior Wall Repaint',  customer:'Prince Dogbe',   city:'Accra',  address:'21 Adenta',                           amount:2900, durationDays:1, window:'Morning' }
+    ];
+
+    // ─────────────────────────────────────────────
+    // Stats — driven entirely by the demo seed so they stay self-consistent.
+    // ─────────────────────────────────────────────
+    const today    = isoOffset(0);
+    const weekEnd  = isoOffset(6);
+    const monthAgo = isoOffset(-30);
+
+    const todayJobs    = PAINTER_JOBS_DEMO.filter(j => j.date === today && j.stage !== 'completed');
+    const weekJobs     = PAINTER_JOBS_DEMO.filter(j => j.date >= today && j.date <= weekEnd && j.stage !== 'completed');
+    const monthDelivered = PAINTER_JOBS_DEMO.filter(j => j.stage === 'completed' && j.date >= monthAgo);
+
+    document.getElementById('statTodayCount').textContent = todayJobs.length;
+    document.getElementById('statTodaySub').textContent   = todayJobs.length === 0 ? 'Free day' : (todayJobs.length === 1 ? 'Scheduled job' : 'Scheduled jobs');
+    document.getElementById('statWeekCount').textContent  = weekJobs.length;
+    document.getElementById('statWeekSub').textContent    = `Through ${new Date(weekEnd).toLocaleDateString('en-GB', { weekday:'short', day:'numeric', month:'short' })}`;
+
+    // Commission card — live numbers from the demo seed so the card isn't
+    // dead. Per-painter commission rate (default 90%, set in admin) overrides
+    // the platform-wide split. Warranty hold is always 5% of the commission
+    // and releases at 90 days with no claim.
+    const myCommissionRate = (typeof me !== 'undefined' && me && Number.isFinite(me.commissionRate))
+      ? Number(me.commissionRate) / 100
+      : 0.90;
+    const monthGross    = monthDelivered.reduce((s, j) => s + j.amount, 0);
+    const monthNet      = Math.round(monthGross * myCommissionRate);
+    const monthWarranty = Math.round(monthNet   * 0.05);
+    const monthReleased = monthNet - monthWarranty;
+    document.getElementById('earnJobs').textContent     = monthDelivered.length;
+    document.getElementById('earnRateLabel').textContent = (myCommissionRate * 100).toFixed(0) + '%';
+    document.getElementById('earnNet').textContent      = 'GHS ' + monthNet.toLocaleString();
+    document.getElementById('earnHold').textContent     = 'GHS ' + monthWarranty.toLocaleString();
+    document.getElementById('earnReleased').textContent = 'GHS ' + monthReleased.toLocaleString();
+
+    // ─────────────────────────────────────────────
+    // Today's assignment card. If multiple jobs are scheduled today (rare),
+    // shows the first one with a "+N more today" link.
+    // ─────────────────────────────────────────────
+    function renderToday() {
+      const host = document.getElementById('todayHost');
+      if (!todayJobs.length) {
+        host.innerHTML = `
+          <div class="today-empty">
+            <strong style="display:block;color:var(--navy-900);font-size:1.05rem;margin-bottom:4px;">No jobs on the books for today.</strong>
+            <p style="margin:0;">Enjoy the day off — your next job is ${weekJobs[0] ? weekJobs[0].ref + ' on ' + new Date(weekJobs[0].date).toLocaleDateString('en-GB', { weekday:'long', day:'numeric', month:'short' }) : 'still being scheduled'}.</p>
+          </div>`;
+        return;
+      }
+      const j = todayJobs[0];
+      const more = todayJobs.length > 1 ? `<a href="#" style="color:rgba(255,255,255,0.85);text-decoration:underline;font-size:0.86rem;">+${todayJobs.length - 1} more today</a>` : '';
+      host.innerHTML = `
+        <div class="today-card">
+          <div>
+            <div class="ref-row">
+              <span class="pill">${j.stage === 'on_site' ? 'On site' : 'Today'}</span>
+              <span style="color:rgba(255,255,255,0.7);font-size:0.86rem;">${j.ref}</span>
+              ${more}
+            </div>
+            <h3>${esc(j.service)} · ${esc(j.customer)}</h3>
+            <div class="meta">${esc(j.address)} · ${esc(j.window)}</div>
+          </div>
+          <div class="actions">
+            ${j.stage === 'on_site'
+              ? `<button class="btn btn-gold" onclick="markComplete('${j.ref}')">✓ Mark QA-ready</button>
+                 <button class="btn btn-ghost" style="color:#fff;border-color:rgba(255,255,255,0.4);" onclick="messageCustomer('${j.ref}')">💬 Message customer</button>`
+              : `<button class="btn btn-gold" onclick="checkIn('${j.ref}')">📍 Check in on site</button>
+                 <button class="btn btn-ghost" style="color:#fff;border-color:rgba(255,255,255,0.4);" onclick="openJob('${j.ref}')">View job details</button>`}
+          </div>
+        </div>`;
+    }
+    function checkIn(ref) {
+      mutateJobStage(ref, 'on_site');
+      emitPainterActivity({ kind: 'painter_checkin', title: `${meName()} checked in`, sub: jobLine(ref) });
+      pmToast('Checked in — admin notified');
+      renderToday(); renderCalendar(); renderUpcoming();
+    }
+    function markComplete(ref) {
+      mutateJobStage(ref, 'qa');
+      emitPainterActivity({ kind: 'painter_complete', title: `${meName()} marked job QA-ready`, sub: jobLine(ref) });
+      pmToast('Marked QA-ready — dispatch will inspect');
+      renderToday(); renderCalendar(); renderUpcoming();
+    }
+    function meName() { return (me && me.name) ? me.name.split(' ')[0] : 'Painter'; }
+    function jobLine(ref) { const j = PAINTER_JOBS_DEMO.find(x => x.ref === ref); return j ? `${ref} · ${j.service} · ${j.customer}` : ref; }
+    function emitPainterActivity({ kind, title, sub = '', severity = 'info' } = {}) {
+      if (typeof pmActivity === 'undefined') return;
+      pmActivity.emit({ kind, title, sub, severity, source: { role: 'painter', name: (me && me.name) || 'Paint Master' } });
+    }
+    function messageCustomer(ref){ pmToast('Routes to in-app chat — wire-up in next session'); }
+    function mutateJobStage(ref, stage) {
+      const j = PAINTER_JOBS_DEMO.find(x => x.ref === ref);
+      if (j) j.stage = stage;
+    }
+
+    // ─────────────────────────────────────────────
+    // 28-day calendar — same shape as the admin painter modal.
+    // Tiles for booked days are clickable; click opens the popover.
+    // ─────────────────────────────────────────────
+    function renderCalendar() {
+      const weekdays = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+      document.getElementById('pcalWeek').innerHTML = weekdays.map(w => `<div>${w}</div>`).join('');
+
+      const todayDate = new Date(); todayDate.setHours(0,0,0,0);
+      const lead = (todayDate.getDay() + 6) % 7; // Mon-start padding
+      const byDate = {};
+      PAINTER_JOBS_DEMO.forEach(j => { (byDate[j.date] = byDate[j.date] || []).push(j); });
+
+      const tiles = [];
+      for (let i = 0; i < lead; i++) tiles.push(`<div class="pcal-day empty"></div>`);
+      for (let i = 0; i < 28; i++) {
+        const d = new Date(todayDate); d.setDate(todayDate.getDate() + i);
+        const iso = d.toISOString().slice(0,10);
+        const jobs = byDate[iso] || [];
+        const cls = ['pcal-day'];
+        if (iso === today) cls.push('today');
+        if (jobs.length) cls.push('booked');
+        const ref = jobs[0]?.ref?.replace('PM-', '');
+        const more = jobs.length > 1 ? ` +${jobs.length - 1}` : '';
+        tiles.push(`
+          <div class="${cls.join(' ')}" data-iso="${iso}"
+               title="${iso}${jobs.length ? ' — ' + jobs.map(j=>j.ref).join(', ') : ''}">
+            <span class="num">${d.getDate()}</span>
+            ${ref ? `<span class="ref">${ref}${more}</span>` : ''}
+          </div>`);
+      }
+      document.getElementById('pcalGrid').innerHTML = tiles.join('');
+      // Wire clicks on booked tiles.
+      document.querySelectorAll('.pcal-day.booked').forEach(t => {
+        t.addEventListener('click', () => {
+          const iso = t.dataset.iso;
+          const jobs = (byDate[iso] || []);
+          if (jobs.length) openJobPopover(jobs[0], jobs.length > 1 ? jobs.slice(1) : []);
+        });
+      });
+    }
+
+    // ─────────────────────────────────────────────
+    // Upcoming list — next 5 non-completed jobs.
+    // ─────────────────────────────────────────────
+    function renderUpcoming() {
+      const upcoming = PAINTER_JOBS_DEMO
+        .filter(j => j.date >= today && j.stage !== 'completed')
+        .sort((a,b) => a.date.localeCompare(b.date))
+        .slice(0,5);
+      const host = document.getElementById('upcomingList');
+      if (!upcoming.length) {
+        host.innerHTML = `<div class="empty-state" style="padding:18px;text-align:center;color:var(--ink-500);">No upcoming jobs scheduled.</div>`;
+        return;
+      }
+      host.innerHTML = upcoming.map(j => {
+        const d = new Date(j.date);
+        const stageClass = 'stage-' + (j.stage || 'scheduled').replace('_','-');
+        const stageLabel = ({ dispatched:'Dispatched', on_site:'On site', qa:'QA', scheduled:'Scheduled', completed:'Completed' })[j.stage] || j.stage;
+        return `
+          <div class="up-row" data-ref="${j.ref}">
+            <div class="date">
+              <div class="d">${d.getDate()}</div>
+              <div class="m">${d.toLocaleDateString('en-GB', { month:'short' })}</div>
+            </div>
+            <div>
+              <strong>${esc(j.service)} · ${esc(j.customer)}</strong>
+              <div class="ref-line">${j.ref} · ${esc(j.window)} · ${esc(j.city)}</div>
+            </div>
+            <div class="right">
+              <span class="stage ${stageClass}">${stageLabel}</span>
+            </div>
+          </div>`;
+      }).join('');
+      host.querySelectorAll('.up-row').forEach(r => r.addEventListener('click', () => {
+        const j = PAINTER_JOBS_DEMO.find(x => x.ref === r.dataset.ref);
+        if (j) openJobPopover(j, []);
+      }));
+    }
+
+    // ─────────────────────────────────────────────
+    // Job popover — opens when a calendar tile or upcoming row is clicked.
+    // Quick actions match what's available given the job's current stage.
+    // ─────────────────────────────────────────────
+    function openJobPopover(job, alsoToday) {
+      const back = document.getElementById('popBack');
+      document.getElementById('popTitle').textContent = `${job.service}`;
+      document.getElementById('popRef').textContent   = `${job.ref} · ${new Date(job.date).toLocaleDateString('en-GB', { weekday:'long', day:'numeric', month:'short' })}`;
+      const isToday = job.date === today;
+      document.getElementById('popBody').innerHTML = `
+        <div class="row"><span class="lbl">Customer</span><strong>${esc(job.customer)}</strong></div>
+        <div class="row"><span class="lbl">Address</span><strong style="text-align:right;max-width:60%;">${esc(job.address)}</strong></div>
+        <div class="row"><span class="lbl">Window</span><strong>${esc(job.window)}</strong></div>
+        <div class="row"><span class="lbl">Dates</span><strong>${new Date(job.date).toLocaleDateString('en-GB',{day:'numeric',month:'short'})}${job.endDate && job.endDate !== job.date ? ' → ' + new Date(job.endDate).toLocaleDateString('en-GB',{day:'numeric',month:'short'}) : ''}</strong></div>
+        <div class="row"><span class="lbl">Duration</span><strong>${job.durationDays} day${job.durationDays===1?'':'s'}</strong></div>
+        <div class="row"><span class="lbl">Quoted total</span><strong>GHS ${job.amount.toLocaleString()}</strong></div>
+        ${alsoToday.length ? `<div class="row"><span class="lbl">Also today</span><strong>${alsoToday.map(j=>j.ref).join(', ')}</strong></div>` : ''}
+      `;
+      // Build action buttons based on stage.
+      const acts = [];
+      acts.push(`<a class="btn btn-outline" href="track.html?ref=${encodeURIComponent(job.ref)}">Open job tracker</a>`);
+      if (isToday && job.stage === 'dispatched') {
+        acts.push(`<button class="btn btn-gold" onclick="checkIn('${job.ref}'); closePop();">📍 Check in</button>`);
+      } else if (isToday && job.stage === 'on_site') {
+        acts.push(`<button class="btn btn-gold" onclick="markComplete('${job.ref}'); closePop();">✓ Mark QA-ready</button>`);
+      }
+      acts.push(`<button class="btn btn-ghost" onclick="closePop();">Close</button>`);
+      document.getElementById('popActions').innerHTML = acts.join('');
+      back.classList.add('show');
+    }
+    function closePop() { document.getElementById('popBack').classList.remove('show'); }
+    function openJob(ref) { const j = PAINTER_JOBS_DEMO.find(x=>x.ref===ref); if (j) openJobPopover(j, []); }
+    document.getElementById('popBack').addEventListener('click', e => {
+      if (e.target.id === 'popBack') closePop();
+    });
+    window.addEventListener('keydown', e => { if (e.key === 'Escape' && document.getElementById('popBack').classList.contains('show')) closePop(); });
+
+    // Sign out → flush session and bounce to login.
+    document.getElementById('signOutBtn').addEventListener('click', e => {
+      e.preventDefault();
+      if (typeof pmAuth !== 'undefined' && pmAuth.signOut) pmAuth.signOut();
+      else if (typeof pmAuth !== 'undefined' && pmAuth.set) pmAuth.set(null);
+      location.href = 'login.html';
+    });
+
+    // Toast helper (matches track.html shape).
+    function pmToast(msg) {
+      const t = document.getElementById('pmToast'); if (!t) return;
+      t.textContent = msg;
+      t.classList.add('show');
+      clearTimeout(pmToast._t);
+      pmToast._t = setTimeout(() => t.classList.remove('show'), 1600);
+    }
+
+    function esc(s) {
+      return String(s == null ? '' : s)
+        .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+        .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+    }
+
+    // ─────────────────────────────────────────────
+    // Notifications module — surfaces pmActivity events relevant to this
+    // painter. An event is relevant when:
+    //   (a) target.role === 'painter' AND target.name matches my name, OR
+    //   (b) target is unset AND source.role === 'admin' (broadcasts), OR
+    //   (c) the event was emitted by this painter themselves (self-receipts —
+    //       check-in / mark-complete confirmations they fired).
+    //
+    // On first load (no events yet), we seed a few realistic notifications
+    // from PAINTER_JOBS_DEMO so the panel isn't empty for the demo.
+    // ─────────────────────────────────────────────
+    function painterFilter(ev) {
+      const myName = (me && me.name) || '';
+      if (ev.target && ev.target.role === 'painter') {
+        return ev.target.name === myName || ev.target.id === (me && me.id);
+      }
+      // Admin broadcasts (no target) reach everyone.
+      if (!ev.target && ev.source && ev.source.role === 'admin') return true;
+      // Self-receipts (this painter emitted the event).
+      if (ev.source && ev.source.role === 'painter' && ev.source.name === myName) return true;
+      return false;
+    }
+
+    function seedPainterNotificationsIfEmpty() {
+      if (typeof pmActivity === 'undefined') return;
+      // Production deployments don't auto-seed — the painter's notifications
+      // come exclusively from real admin actions (assignments, dispatches).
+      if (typeof PM_IS_PRODUCTION !== 'undefined' && PM_IS_PRODUCTION) return;
+      // Only seed if there's NOTHING relevant to this painter yet.
+      if (pmActivity.list().some(painterFilter)) return;
+      const myName = (me && me.name) || 'Paint Master';
+      // Three realistic events spaced over the last day to mimic incoming work.
+      const seeds = [];
+      const top3 = PAINTER_JOBS_DEMO
+        .filter(j => j.stage !== 'completed')
+        .sort((a, b) => a.date.localeCompare(b.date))
+        .slice(0, 3);
+      top3.forEach((j, i) => {
+        seeds.push({
+          kind: 'booking',
+          title: `New job assigned · ${j.ref}`,
+          sub:   `${j.service} · ${j.customer} · ${new Date(j.date).toLocaleDateString('en-GB',{day:'numeric',month:'short'})}`,
+          source: { role: 'admin', name: 'Akosua Boateng' },
+          target: { role: 'painter', name: myName },
+          severity: 'info',
+        });
+      });
+      // Newest seed first → emit in reverse so the unshift order looks natural.
+      seeds.reverse().forEach(s => pmActivity.emit(s));
+    }
+
+    function renderNotifications() {
+      if (typeof pmActivity === 'undefined') return;
+      const list = pmActivity.list().filter(painterFilter).slice(0, 25);
+      const host = document.getElementById('notifList');
+      const badge = document.getElementById('notifBadge');
+      const unread = list.filter(e => !e.read).length;
+      if (badge) {
+        badge.textContent = unread > 99 ? '99+' : String(unread);
+        badge.style.display = unread > 0 ? 'inline-block' : 'none';
+      }
+      if (!list.length) {
+        host.innerHTML = `<div class="small" style="padding:14px 8px;color:var(--ink-500);text-align:center;">Nothing new. New job assignments and messages from dispatch land here.</div>`;
+        return;
+      }
+      host.innerHTML = list.map(ev => {
+        // If the notification references a job ref, surface a mini job card
+        // with the start/end dates and a 'View job' action that opens the
+        // popover — otherwise just render the event line.
+        const refMatch = String(ev.title || '').match(/PM-[A-Z0-9-]+/);
+        const job = refMatch ? PAINTER_JOBS_DEMO.find(j => j.ref === refMatch[0]) : null;
+        const unreadBg = ev.read ? '' : 'background:rgba(245,184,0,0.08);';
+        const sevColor = ev.severity === 'error' ? 'var(--red)' : ev.severity === 'warn' ? 'var(--orange)' : 'var(--ink-500)';
+        const sourceLine = ev.source ? `${ev.source.name} (${ev.source.role})` : 'System';
+        return `
+          <div style="padding:10px 8px;border-bottom:1px solid var(--ink-100);${unreadBg}border-radius:6px;margin:0 -2px;">
+            <div style="display:grid;grid-template-columns:24px 1fr;gap:8px;">
+              <div style="font-size:1.05rem;line-height:1.2;">${pmActivity.iconFor(ev.kind)}</div>
+              <div>
+                <strong style="display:block;font-size:0.88rem;color:var(--navy-900);">${esc(ev.title)}</strong>
+                ${ev.sub ? `<div style="font-size:0.78rem;color:var(--ink-500);margin-top:2px;line-height:1.4;">${esc(ev.sub)}</div>` : ''}
+                <div style="font-size:0.7rem;color:${sevColor};margin-top:4px;">${esc(sourceLine)} · ${pmActivity.relTime(ev.ts)}</div>
+                ${job ? `
+                  <div style="margin-top:8px;border:1px solid var(--ink-100);border-radius:8px;padding:8px 10px;background:#fff;">
+                    <div style="display:flex;justify-content:space-between;gap:6px;align-items:start;">
+                      <div style="min-width:0;">
+                        <div class="small" style="color:var(--ink-500);font-weight:600;">${esc(job.ref)}</div>
+                        <strong style="font-size:0.82rem;color:var(--navy-900);display:block;">${esc(job.service)}</strong>
+                        <div class="small" style="color:var(--ink-500);">${esc(job.customer)} · ${esc(job.window)}</div>
+                        <div class="small" style="color:var(--ink-500);">${new Date(job.date).toLocaleDateString('en-GB',{day:'numeric',month:'short'})}${job.endDate && job.endDate !== job.date ? ' → ' + new Date(job.endDate).toLocaleDateString('en-GB',{day:'numeric',month:'short'}) : ''}</div>
+                      </div>
+                      <button class="btn btn-outline" style="padding:4px 10px;font-size:0.74rem;flex-shrink:0;" onclick="openJob('${esc(job.ref)}')">View</button>
+                    </div>
+                  </div>
+                ` : ''}
+              </div>
+            </div>
+          </div>`;
+      }).join('');
+    }
+    document.getElementById('notifMarkRead').addEventListener('click', () => {
+      if (typeof pmActivity !== 'undefined') {
+        pmActivity.markAllRead();
+        renderNotifications();
+        pmToast('Notifications cleared');
+      }
+    });
+
+    // First paint.
+    renderToday();
+    renderCalendar();
+    renderUpcoming();
+    seedPainterNotificationsIfEmpty();
+    renderNotifications();
+    if (typeof pmActivity !== 'undefined') {
+      pmActivity.listen(() => renderNotifications());
+    }
+  </script>
+</body>
+</html>

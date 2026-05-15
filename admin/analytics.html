@@ -1,0 +1,449 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" type="image/png" href="../assets/img/favicon.png" />
+  <title>Paint Masters — Analytics</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/admin.css" />
+  <style>
+    .chart-card { padding: 22px; }
+    .chart-card h3 { font-size: 1.05rem; margin-bottom: 4px; }
+    .chart-card .sub { color: var(--ink-500); font-size: 0.85rem; margin-bottom: 16px; }
+    .legend { display:flex; gap:16px; flex-wrap:wrap; font-size:0.82rem; color:var(--ink-700); margin-top:10px; }
+    .legend .sw { display:inline-block; width:12px; height:12px; border-radius:3px; margin-right:6px; vertical-align:middle; }
+    .funnel-step { display:grid; grid-template-columns: 160px 1fr 100px 80px; gap:12px; align-items:center; padding:14px 0; border-bottom:1px solid var(--ink-100); }
+    .funnel-bar { background: linear-gradient(90deg, var(--gold-500), #ffd24a); height: 32px; border-radius: 6px; display:flex; align-items:center; justify-content:flex-end; padding-right:10px; color:var(--navy-900); font-weight:700; font-size:0.85rem; }
+    .leaderboard-row { display:grid; grid-template-columns: 36px 1fr 80px 80px 80px 60px; gap:12px; align-items:center; padding:10px 0; border-bottom:1px solid var(--ink-100); font-size:0.9rem; }
+    .leaderboard-row .rank { font-weight:700; color:var(--ink-500); text-align:center; }
+    .leaderboard-row .rank.top { color:var(--gold-500); font-size:1.2rem; }
+    .channel-row { display:grid; grid-template-columns: 1fr 90px 90px 90px 90px; gap:12px; align-items:center; padding:12px 0; border-bottom:1px solid var(--ink-100); font-size:0.9rem; }
+    .donut-wrap { display:flex; align-items:center; gap:24px; }
+  </style>
+</head>
+<body>
+  <div class="admin-shell">
+    <div id="admin-sidebar"></div>
+    <div class="admin-main">
+      <div id="admin-topbar"></div>
+      <div class="main">
+
+        <div class="page-head">
+          <div>
+            <h1>Analytics & Reporting</h1>
+            <div class="sub">Operational and financial overview · last <span id="rangeLabel">90</span> days</div>
+          </div>
+          <div class="page-actions">
+            <select class="sel" id="rangeSel" style="min-width:160px;">
+              <option value="7">Last 7 days</option>
+              <option value="30">Last 30 days</option>
+              <option value="90" selected>Last 90 days</option>
+              <option value="365">This year</option>
+            </select>
+            <button class="btn btn-outline" onclick="window.print()">⤓ Export PDF</button>
+          </div>
+        </div>
+
+        <!-- ====== KPI Strip ====== -->
+        <div class="kpi-grid" id="topKpis"></div>
+
+        <!-- ====== Section 1 — Revenue Trend ====== -->
+        <div class="panel chart-card" style="margin-top:20px;">
+          <h3>Revenue trend</h3>
+          <div class="sub">Daily revenue with 7-day rolling average · trailing 90 days</div>
+          <div id="revChart"></div>
+          <div class="legend">
+            <span><span class="sw" style="background:var(--gold-500);"></span>Daily revenue</span>
+            <span><span class="sw" style="background:var(--navy-900);"></span>7-day rolling avg</span>
+          </div>
+        </div>
+
+        <!-- ====== Section 2 — Service mix + Region split ====== -->
+        <div class="grid grid-2" style="margin-top:20px;">
+          <div class="panel chart-card">
+            <h3>Service mix</h3>
+            <div class="sub">Revenue and job count by service type</div>
+            <div id="serviceMix"></div>
+          </div>
+          <div class="panel chart-card">
+            <h3>Region split</h3>
+            <div class="sub">Where the work is happening</div>
+            <div id="regionDonut" class="donut-wrap"></div>
+          </div>
+        </div>
+
+        <!-- ====== Section 3 — Artisan Leaderboard ====== -->
+        <div class="panel chart-card" style="margin-top:20px;">
+          <h3>Paint Master performance</h3>
+          <div class="sub">Composite score = rating × volume × on-time. Click a row to see the artisan profile.</div>
+          <div class="leaderboard-row" style="border-bottom:2px solid var(--ink-100);font-weight:600;font-size:0.78rem;text-transform:uppercase;color:var(--ink-500);">
+            <span class="rank">#</span><span>Master</span><span style="text-align:right;">Jobs</span><span style="text-align:right;">Rating</span><span style="text-align:right;">On-time</span><span style="text-align:right;">Score</span>
+          </div>
+          <div id="leaderboard"></div>
+        </div>
+
+        <!-- ====== Section 4 — Conversion Funnel ====== -->
+        <div class="panel chart-card" style="margin-top:20px;">
+          <h3>Conversion funnel</h3>
+          <div class="sub">Quote → Paid booking → Site visit → Completion (last 90 days)</div>
+          <div id="funnel"></div>
+          <div class="small" style="margin-top:14px;color:var(--ink-500);">📍 The biggest drop is quote → booking — likely candidates for follow-up automation.</div>
+        </div>
+
+        <!-- ====== Section 5 — Acquisition channels + Satisfaction ====== -->
+        <div class="grid grid-2" style="margin-top:20px;">
+          <div class="panel chart-card">
+            <h3>Customer acquisition</h3>
+            <div class="sub">CAC and LTV by source channel</div>
+            <div class="channel-row" style="border-bottom:2px solid var(--ink-100);font-weight:600;font-size:0.78rem;text-transform:uppercase;color:var(--ink-500);">
+              <span>Channel</span><span style="text-align:right;">Customers</span><span style="text-align:right;">CAC</span><span style="text-align:right;">Avg LTV</span><span style="text-align:right;">Ratio</span>
+            </div>
+            <div id="channels"></div>
+          </div>
+          <div class="panel chart-card">
+            <h3>Customer satisfaction</h3>
+            <div class="sub">Rating distribution and trend</div>
+            <div id="satChart"></div>
+          </div>
+        </div>
+
+        <!-- ====== Section 6 — Operational Metrics ====== -->
+        <div class="panel chart-card" style="margin-top:20px;background:linear-gradient(135deg,#0B1F3A,#15315a);color:#fff;">
+          <h3 style="color:#fff;">Operational health</h3>
+          <div class="sub" style="color:rgba(255,255,255,0.7);">Key throughput and quality metrics</div>
+          <div class="kpi-grid" id="opsKpis" style="margin-top:14px;"></div>
+        </div>
+
+        <p class="small" style="text-align:center;margin-top:24px;color:var(--ink-500);">
+          Note: Analytics use a deterministic synthetic dataset for this prototype. In production these would be wired to live job, payment, and review records.
+        </p>
+
+      </div>
+    </div>
+  </div>
+
+  <script src="../assets/shared.js"></script>
+  <script src="assets/admin-shared.js"></script>
+  <script>
+    adminMount('analytics');
+
+    // -------- Deterministic seeded RNG so numbers stay consistent across reloads --------
+    function makeRng(seed) {
+      return function () { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; };
+    }
+
+    // -------- Synthesize a 90-day revenue series with weekly seasonality --------
+    function synthesise() {
+      const rng = makeRng(48211);
+      const series = [];
+      const today = new Date('2026-04-25');
+      const base = 5800;
+      for (let i = 89; i >= 0; i--) {
+        const d = new Date(today.getTime() - i * 86400 * 1000);
+        const dow = d.getDay(); // 0=Sun..6=Sat
+        // Saturdays high, Sundays low; gentle upward trend over time
+        const dowMult = dow === 6 ? 1.6 : dow === 5 ? 1.3 : dow === 0 ? 0.4 : 1.0;
+        const trend = 1 + (89 - i) * 0.005;     // ~+45% over the window
+        const noise = 0.7 + rng() * 0.7;        // 0.7..1.4
+        const v = base * dowMult * trend * noise;
+        series.push({ date: d, revenue: Math.round(v) });
+      }
+      return series;
+    }
+    const REV_SERIES = synthesise();
+
+    function rolling(arr, n) {
+      const out = [];
+      for (let i = 0; i < arr.length; i++) {
+        const slice = arr.slice(Math.max(0, i - n + 1), i + 1);
+        out.push(Math.round(slice.reduce((a,x) => a + x.revenue, 0) / slice.length));
+      }
+      return out;
+    }
+
+    // -------- KPI strip — recalculates from selected range --------
+    function kpisForRange(days) {
+      const slice = REV_SERIES.slice(-days);
+      const rev = slice.reduce((a,x) => a + x.revenue, 0);
+      const prev = REV_SERIES.slice(-days*2, -days);
+      const prevRev = prev.reduce((a,x) => a + x.revenue, 0) || 1;
+      const growth = Math.round(((rev - prevRev) / prevRev) * 100);
+      const jobsCount = Math.round(rev / 6800); // rough avg job size
+      const newCust = Math.round(jobsCount * 0.55);
+      return { rev, prevRev, growth, jobsCount, newCust };
+    }
+
+    function renderKpis() {
+      const days = Number(document.getElementById('rangeSel').value);
+      document.getElementById('rangeLabel').textContent = days;
+      const k = kpisForRange(days);
+      document.getElementById('topKpis').innerHTML = `
+        <div class="kpi"><div class="label">Revenue</div><div class="value">${fmtGHS(k.rev)}</div><div class="trend ${k.growth>=0?'up':'down'}">${k.growth>=0?'▲':'▼'} ${Math.abs(k.growth)}% vs prior period</div></div>
+        <div class="kpi"><div class="label">Jobs completed</div><div class="value">${k.jobsCount}</div><div class="trend up">Avg ${fmtGHS(k.rev/k.jobsCount)} per job</div></div>
+        <div class="kpi"><div class="label">New customers</div><div class="value">${k.newCust}</div><div class="trend up">${Math.round(k.newCust/days*7)} per week</div></div>
+        <div class="kpi"><div class="label">Avg satisfaction</div><div class="value" style="color:var(--gold-500);">★ 4.85</div><div class="trend up">96% would recommend</div></div>
+        <div class="kpi"><div class="label">Repeat rate</div><div class="value">38%</div><div class="trend up">▲ 4 pts</div></div>
+      `;
+    }
+
+    document.getElementById('rangeSel').addEventListener('change', () => { renderKpis(); renderRevChart(); });
+
+    // -------- Revenue chart (SVG) --------
+    function renderRevChart() {
+      const days = Number(document.getElementById('rangeSel').value);
+      const data = REV_SERIES.slice(-Math.min(days, 90));
+      const W = 1100, H = 280, P = 40;
+      const max = Math.max(...data.map(d => d.revenue)) * 1.15;
+      const xScale = i => P + (i / (data.length - 1)) * (W - 2*P);
+      const yScale = v => H - P - (v / max) * (H - 2*P);
+      const points = data.map((d,i) => `${xScale(i)},${yScale(d.revenue)}`).join(' ');
+      const areaPath = `M ${P},${H-P} L ${data.map((d,i)=>`${xScale(i)},${yScale(d.revenue)}`).join(' L ')} L ${W-P},${H-P} Z`;
+      const rolled = rolling(data, 7);
+      const rolledPath = rolled.map((v,i)=>`${i===0?'M':'L'} ${xScale(i)},${yScale(v)}`).join(' ');
+
+      // Y-axis ticks
+      const ticks = [];
+      for (let t=0; t<=4; t++) {
+        const v = (max * t/4);
+        const y = yScale(v);
+        ticks.push(`<line x1="${P}" y1="${y}" x2="${W-P}" y2="${y}" stroke="#E8EBF0" stroke-dasharray="3,3"/>
+                    <text x="${P-8}" y="${y+4}" text-anchor="end" font-size="10" fill="#6B7280">${fmtGHS(v)}</text>`);
+      }
+      // X-axis labels (every ~12 days)
+      const xLabels = [];
+      const step = Math.max(1, Math.floor(data.length / 7));
+      for (let i = 0; i < data.length; i += step) {
+        xLabels.push(`<text x="${xScale(i)}" y="${H-P+18}" text-anchor="middle" font-size="10" fill="#6B7280">${data[i].date.toLocaleDateString('en-GB',{day:'numeric',month:'short'})}</text>`);
+      }
+
+      document.getElementById('revChart').innerHTML = `
+        <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="width:100%;height:280px;">
+          <defs>
+            <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%"   stop-color="#F5B800" stop-opacity="0.55"/>
+              <stop offset="100%" stop-color="#F5B800" stop-opacity="0.05"/>
+            </linearGradient>
+          </defs>
+          ${ticks.join('')}
+          <path d="${areaPath}" fill="url(#revGrad)"/>
+          <polyline points="${points}" fill="none" stroke="#F5B800" stroke-width="2"/>
+          <path d="${rolledPath}" fill="none" stroke="#0B1F3A" stroke-width="2.5" stroke-dasharray="0"/>
+          ${xLabels.join('')}
+        </svg>
+      `;
+    }
+
+    // -------- Service mix --------
+    function renderServiceMix() {
+      const services = [
+        { name:'Interior Repaint',     jobs: 38, revenue: 168000 },
+        { name:'Exterior & Façade',    jobs: 14, revenue: 142000 },
+        { name:'Decorative Finishes',  jobs: 22, revenue:  96000 },
+        { name:'Commercial Fit-Out',   jobs:  9, revenue: 184000 },
+        { name:'Roof Coating',         jobs:  6, revenue:  72000 },
+        { name:'Doors & Trim',         jobs: 18, revenue:  38000 }
+      ];
+      const maxRev = Math.max(...services.map(s=>s.revenue));
+      const maxJobs = Math.max(...services.map(s=>s.jobs));
+      document.getElementById('serviceMix').innerHTML = services.map(s => `
+        <div style="margin-bottom:14px;">
+          <div class="flex-between" style="margin-bottom:4px;">
+            <strong style="font-size:0.9rem;">${s.name}</strong>
+            <span class="small">${s.jobs} jobs · ${fmtGHS(s.revenue)}</span>
+          </div>
+          <div style="display:flex;gap:6px;align-items:center;">
+            <div style="flex:1;background:#FCEFC7;height:14px;border-radius:4px;overflow:hidden;">
+              <div style="width:${(s.revenue/maxRev)*100}%;height:100%;background:var(--gold-500);"></div>
+            </div>
+          </div>
+          <div style="display:flex;gap:6px;align-items:center;margin-top:3px;">
+            <div style="flex:1;background:#E0EAF8;height:8px;border-radius:4px;overflow:hidden;">
+              <div style="width:${(s.jobs/maxJobs)*100}%;height:100%;background:var(--blue);"></div>
+            </div>
+          </div>
+        </div>
+      `).join('') + `
+        <div class="legend">
+          <span><span class="sw" style="background:var(--gold-500);"></span>Revenue</span>
+          <span><span class="sw" style="background:var(--blue);"></span>Job count</span>
+        </div>`;
+    }
+
+    // -------- Region donut --------
+    function renderRegionDonut() {
+      const regions = [
+        { name:'Accra',      pct: 62, color:'#0B1F3A' },
+        { name:'Tema',       pct: 18, color:'#F5B800' },
+        { name:'Kumasi',     pct: 11, color:'#1E7F4F' },
+        { name:'Cape Coast', pct:  5, color:'#2E70C9' },
+        { name:'Takoradi',   pct:  4, color:'#D7263D' }
+      ];
+      const cx=80, cy=80, r=60, sw=22;
+      let acc = 0;
+      const C = 2 * Math.PI * r;
+      const segs = regions.map(rg => {
+        const len = (rg.pct/100) * C;
+        const seg = `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${rg.color}" stroke-width="${sw}" stroke-dasharray="${len} ${C-len}" stroke-dashoffset="${-acc}" transform="rotate(-90 ${cx} ${cy})"/>`;
+        acc += len;
+        return seg;
+      }).join('');
+      document.getElementById('regionDonut').innerHTML = `
+        <svg viewBox="0 0 160 160" style="width:160px;height:160px;flex-shrink:0;">
+          ${segs}
+          <text x="${cx}" y="${cy-4}" text-anchor="middle" font-size="12" fill="#6B7280">Top</text>
+          <text x="${cx}" y="${cy+14}" text-anchor="middle" font-size="20" font-weight="700" fill="#0B1F3A">Accra</text>
+        </svg>
+        <div style="flex:1;">
+          ${regions.map(rg=>`
+            <div class="flex-between" style="padding:5px 0;">
+              <span><span class="sw" style="background:${rg.color};"></span>${rg.name}</span>
+              <strong style="font-size:0.9rem;">${rg.pct}%</strong>
+            </div>
+          `).join('')}
+        </div>
+      `;
+    }
+
+    // -------- Artisan Leaderboard --------
+    function renderLeaderboard() {
+      const s = getStore();
+      const maxJobs = Math.max(...s.artisans.map(a=>a.jobs));
+      const scored = s.artisans.map(a => {
+        const onTime = 88 + (a.years % 10);
+        const score = Math.round((a.rating/5) * (a.jobs/maxJobs) * (onTime/100) * 1000);
+        return { ...a, onTime, score };
+      }).sort((a,b) => b.score - a.score);
+
+      document.getElementById('leaderboard').innerHTML = scored.map((a,i) => `
+        <div class="leaderboard-row" style="cursor:pointer;" onclick="location.href='artisans.html'">
+          <span class="rank ${i<3?'top':''}">${i===0?'🥇':i===1?'🥈':i===2?'🥉':i+1}</span>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <div class="avatar" style="width:34px;height:34px;background:${a.color};font-size:0.78rem;">${a.initials}</div>
+            <div>
+              <strong>${a.name}</strong>
+              <div class="small">${a.region} · ${a.specs.join(', ')}</div>
+            </div>
+          </div>
+          <span style="text-align:right;">${a.jobs}</span>
+          <span style="text-align:right;color:var(--gold-500);font-weight:600;">★ ${a.rating}</span>
+          <span style="text-align:right;">${a.onTime}%</span>
+          <span style="text-align:right;font-weight:700;">${a.score}</span>
+        </div>
+      `).join('');
+    }
+
+    // -------- Conversion Funnel --------
+    function renderFunnel() {
+      const steps = [
+        { name:'Quote requested',   count: 248, pct: 100 },
+        { name:'Booking confirmed', count: 129, pct:  52 },
+        { name:'Site visit',        count: 121, pct:  49 },
+        { name:'Completed + paid',  count: 117, pct:  47 }
+      ];
+      document.getElementById('funnel').innerHTML = steps.map((s, i) => `
+        <div class="funnel-step">
+          <strong>${s.name}</strong>
+          <div class="funnel-bar" style="width:${s.pct}%;">${s.count} jobs</div>
+          <span class="small" style="text-align:right;">${s.pct}%</span>
+          <span class="small" style="text-align:right;color:${i>0 && (steps[i-1].pct - s.pct) > 30 ? 'var(--red)':'var(--ink-500)'};">${i>0?'-'+(steps[i-1].pct - s.pct)+'%':''}</span>
+        </div>
+      `).join('');
+    }
+
+    // -------- Channels --------
+    function renderChannels() {
+      const channels = [
+        { name:'Referrals',          customers: 42, cac: 35,  ltv: 14200 },
+        { name:'WhatsApp campaigns', customers: 28, cac: 120, ltv: 8400  },
+        { name:'Google search',      customers: 24, cac: 280, ltv: 9800  },
+        { name:'Instagram',          customers: 18, cac: 410, ltv: 6200  },
+        { name:'Walk-in / events',   customers:  9, cac: 80,  ltv: 11500 }
+      ];
+      document.getElementById('channels').innerHTML = channels.map(c => {
+        const ratio = (c.ltv / c.cac).toFixed(1);
+        const ratioColor = ratio > 30 ? 'var(--green)' : ratio > 15 ? 'var(--gold-500)' : 'var(--red)';
+        return `
+          <div class="channel-row">
+            <strong>${c.name}</strong>
+            <span style="text-align:right;">${c.customers}</span>
+            <span style="text-align:right;">${fmtGHS(c.cac)}</span>
+            <span style="text-align:right;">${fmtGHS(c.ltv)}</span>
+            <span style="text-align:right;font-weight:700;color:${ratioColor};">${ratio}×</span>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // -------- Satisfaction chart --------
+    function renderSatisfaction() {
+      const dist = [
+        { stars:5, count: 78, color:'var(--green)' },
+        { stars:4, count: 19, color:'var(--gold-500)' },
+        { stars:3, count:  3, color:'var(--blue)' },
+        { stars:2, count:  1, color:'var(--warn)' },
+        { stars:1, count:  0, color:'var(--red)' }
+      ];
+      const total = dist.reduce((a,x) => a + x.count, 0);
+      document.getElementById('satChart').innerHTML = dist.map(d => `
+        <div style="display:grid;grid-template-columns:50px 1fr 60px;gap:10px;align-items:center;padding:6px 0;">
+          <span style="color:var(--gold-500);">${'★'.repeat(d.stars)}<span style="color:var(--ink-100);">${'★'.repeat(5-d.stars)}</span></span>
+          <div style="background:var(--ink-100);height:12px;border-radius:4px;overflow:hidden;">
+            <div style="width:${(d.count/total)*100}%;height:100%;background:${d.color};"></div>
+          </div>
+          <span style="text-align:right;font-size:0.85rem;"><strong>${d.count}</strong> <span class="small">(${Math.round(d.count/total*100)}%)</span></span>
+        </div>
+      `).join('') + `
+        <div style="margin-top:14px;padding:12px;background:var(--ink-50);border-radius:10px;display:flex;justify-content:space-around;text-align:center;">
+          <div><div class="small">Avg rating</div><strong style="font-size:1.3rem;color:var(--gold-500);">★ 4.85</strong></div>
+          <div><div class="small">Reviews collected</div><strong style="font-size:1.3rem;">${total}</strong></div>
+          <div><div class="small">Would recommend</div><strong style="font-size:1.3rem;color:var(--green);">96%</strong></div>
+        </div>
+      `;
+    }
+
+    // -------- Ops KPIs (dark band) --------
+    function renderOps() {
+      document.getElementById('opsKpis').innerHTML = `
+        <div class="kpi" style="background:rgba(255,255,255,0.06);border-color:rgba(255,255,255,0.12);">
+          <div class="label" style="color:rgba(255,255,255,0.6);">Avg quote → booking</div>
+          <div class="value" style="color:#fff;">2.4 days</div>
+          <div class="trend up" style="color:#9CDFB6;">▼ 0.6 days</div>
+        </div>
+        <div class="kpi" style="background:rgba(255,255,255,0.06);border-color:rgba(255,255,255,0.12);">
+          <div class="label" style="color:rgba(255,255,255,0.6);">QA pass rate (1st try)</div>
+          <div class="value" style="color:#fff;">94%</div>
+          <div class="trend up" style="color:#9CDFB6;">▲ 3 pts</div>
+        </div>
+        <div class="kpi" style="background:rgba(255,255,255,0.06);border-color:rgba(255,255,255,0.12);">
+          <div class="label" style="color:rgba(255,255,255,0.6);">On-time arrival</div>
+          <div class="value" style="color:#fff;">91%</div>
+          <div class="trend up" style="color:#9CDFB6;">▲ 5 pts</div>
+        </div>
+        <div class="kpi" style="background:rgba(255,255,255,0.06);border-color:rgba(255,255,255,0.12);">
+          <div class="label" style="color:rgba(255,255,255,0.6);">Re-work rate</div>
+          <div class="value" style="color:#fff;">2.1%</div>
+          <div class="trend up" style="color:#9CDFB6;">▼ 0.8 pts</div>
+        </div>
+        <div class="kpi" style="background:rgba(255,255,255,0.06);border-color:rgba(255,255,255,0.12);">
+          <div class="label" style="color:rgba(255,255,255,0.6);">Master utilisation</div>
+          <div class="value" style="color:#fff;">73%</div>
+          <div class="trend up" style="color:#9CDFB6;">▲ 6 pts</div>
+        </div>
+      `;
+    }
+
+    renderKpis();
+    renderRevChart();
+    renderServiceMix();
+    renderRegionDonut();
+    renderLeaderboard();
+    renderFunnel();
+    renderChannels();
+    renderSatisfaction();
+    renderOps();
+  </script>
+</body>
+</html>

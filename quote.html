@@ -1,0 +1,746 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" type="image/png" href="assets/img/favicon.png" />
+  <title>Get an Instant Quote — Paint Masters</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/styles.css" />
+  <style>
+    /* ---- Paint products step (volume gate) ---- */
+    .pv-line {
+      border: 1px solid var(--ink-100); border-radius: var(--radius);
+      padding: 16px 18px; margin-bottom: 14px; background: #fcfdfe;
+    }
+    .pv-line-head {
+      display:flex; justify-content:space-between; align-items:center;
+      margin-bottom: 12px;
+    }
+    .pv-line-head strong { font-size: 0.92rem; color: var(--navy-900); }
+    .pv-line-remove {
+      background: transparent; border: 0; color: var(--ink-500);
+      font-size: 0.85rem; cursor: pointer; padding: 4px 6px;
+    }
+    .pv-line-remove:hover { color: var(--red-600, #c1272d); }
+    .pv-line .row { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 12px; }
+    @media (max-width: 620px) { .pv-line .row { grid-template-columns: 1fr; } }
+    .pv-line label { display:block; font-size:0.78rem; font-weight:700; color:var(--ink-700); margin-bottom:4px; }
+    .pv-line .input, .pv-line .select { width: 100%; }
+
+    .pv-preview {
+      margin-top: 12px; padding: 10px 14px;
+      background: linear-gradient(135deg,#f0f7ee,#ffffff);
+      border-left: 3px solid #5a8a2e; border-radius: 6px;
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+      font-size: 0.86rem;
+    }
+    @media (max-width: 620px) { .pv-preview { grid-template-columns: 1fr 1fr; } }
+    .pv-preview .stat strong {
+      display: block; font-size: 1.15rem; color: var(--navy-900); line-height: 1.1;
+    }
+    .pv-preview .stat span {
+      font-size: 0.72rem; color: var(--ink-500); text-transform: uppercase; letter-spacing: 0.06em;
+    }
+    .pv-preview .stat.err strong { color: var(--ink-500); font-style: italic; font-size: 0.92rem; }
+
+    .pv-add-btn {
+      width: 100%; padding: 14px; border: 1px dashed var(--ink-300);
+      background: transparent; color: var(--ink-700); font-weight: 600;
+      border-radius: var(--radius); cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .pv-add-btn:hover { background: #f6faf2; border-color: #5a8a2e; color: var(--navy-900); }
+
+    .pv-totals {
+      margin-top: 16px; padding: 14px 16px;
+      background: var(--navy-900); color: #fff; border-radius: var(--radius);
+      display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px;
+    }
+    @media (max-width: 620px) { .pv-totals { grid-template-columns: 1fr 1fr; } }
+    .pv-totals .stat strong { display:block; font-size: 1.3rem; line-height: 1.1; }
+    .pv-totals .stat span { font-size: 0.72rem; color: rgba(255,255,255,0.7); text-transform: uppercase; letter-spacing: 0.06em; }
+
+    .pv-helper-note {
+      margin-top: 14px; font-size: 0.85rem; color: var(--ink-700);
+      padding: 10px 14px; background: #fffaf0; border-left: 3px solid var(--gold-500); border-radius: 6px;
+    }
+  </style>
+</head>
+<body>
+  <div id="pm-nav"></div>
+
+  <section class="section-sm" style="background:linear-gradient(180deg,#F7FAFD,#FFFFFF);">
+    <div class="container" style="padding:40px 24px 16px;">
+      <span class="eyebrow">Instant Quote Calculator</span>
+      <h1 class="mt-16" style="margin-bottom:6px;">Tell us about the space. Get a price.</h1>
+      <p>Answers in under 3 seconds. No email required. Adjust any time before booking.</p>
+    </div>
+  </section>
+
+  <section class="section" style="padding-top:24px;">
+    <div class="container">
+      <div class="quote-wrap">
+        <!-- FORM -->
+        <div class="quote-form">
+          <div class="step-tab" id="qSteps">
+            <button class="active" data-step="1">1. Service</button>
+            <button data-step="2">2. Space</button>
+            <button data-step="3">3. Surface & Finish</button>
+            <button data-step="4">4. Paint</button>
+            <button data-step="5">5. Add-ons</button>
+          </div>
+
+          <div class="progress"><span id="qProgress" style="width:20%"></span></div>
+
+          <!-- STEP 1: Service -->
+          <div class="quote-panel active" data-panel="1">
+            <h3 class="mt-24">What are we painting?</h3>
+            <p>Pick the category that best matches your project.</p>
+
+            <div class="chip-group" id="catGroup">
+              <button class="chip active" data-cat="residential">🏠 Residential</button>
+              <button class="chip" data-cat="decorative">✨ Decorative</button>
+              <button class="chip" data-cat="commercial">🏢 Commercial</button>
+              <button class="chip" data-cat="specialty">🎯 Specialty</button>
+            </div>
+
+            <div class="field mt-24">
+              <label>Specific service</label>
+              <select class="select" id="qService"></select>
+            </div>
+
+            <div class="flex-between mt-24">
+              <div></div>
+              <button class="btn btn-primary" onclick="qNext(2)">Next: Space →</button>
+            </div>
+          </div>
+
+          <!-- STEP 2: Space -->
+          <div class="quote-panel" data-panel="2">
+            <h3 class="mt-24">How big is the space?</h3>
+            <p>Measure in meters. If you only know one, round up — we'll confirm on the site visit.</p>
+
+            <div class="row">
+              <div class="field">
+                <label>Length (m)</label>
+                <input class="input" type="number" step="0.1" min="0" id="qLength" value="5" />
+              </div>
+              <div class="field">
+                <label>Width (m)</label>
+                <input class="input" type="number" step="0.1" min="0" id="qWidth" value="4" />
+              </div>
+            </div>
+            <div class="row">
+              <div class="field">
+                <label>Ceiling height (m)</label>
+                <input class="input" type="number" step="0.1" min="0" id="qHeight" value="3" />
+              </div>
+              <div class="field">
+                <label>Number of similar rooms</label>
+                <input class="input" type="number" step="1" min="1" id="qRooms" value="1" />
+              </div>
+            </div>
+
+            <div class="field">
+              <label>What are we painting?</label>
+              <div class="chip-group" id="scopeGroup">
+                <button class="chip active" data-scope="walls">Walls only</button>
+                <button class="chip" data-scope="walls_ceiling">Walls + Ceiling</button>
+                <button class="chip" data-scope="walls_ceiling_trim">Walls + Ceiling + Trim</button>
+                <button class="chip" data-scope="exterior">Exterior façade</button>
+              </div>
+            </div>
+
+            <div class="flex-between mt-24">
+              <button class="btn btn-ghost" onclick="qNext(1)">← Back</button>
+              <button class="btn btn-primary" onclick="qNext(3)">Next: Surface →</button>
+            </div>
+          </div>
+
+          <!-- STEP 3: Surface & finish -->
+          <div class="quote-panel" data-panel="3">
+            <h3 class="mt-24">Surface & finish</h3>
+            <p>This tells our Master what paint and prep is needed.</p>
+
+            <div class="field">
+              <label>Current surface</label>
+              <div class="chip-group" id="surfaceGroup">
+                <button class="chip active" data-surface="drywall">Drywall / plaster</button>
+                <button class="chip" data-surface="concrete">Concrete / cement</button>
+                <button class="chip" data-surface="wood">Wood</button>
+                <button class="chip" data-surface="metal">Metal</button>
+              </div>
+            </div>
+
+            <div class="field">
+              <label>Condition</label>
+              <div class="chip-group" id="conditionGroup">
+                <button class="chip" data-condition="new">Brand new</button>
+                <button class="chip active" data-condition="good">Good — minor touch-ups</button>
+                <button class="chip" data-condition="prep">Needs prep (cracks, old paint, stains)</button>
+                <button class="chip" data-condition="bad">Heavy repair (mould, flaking)</button>
+              </div>
+            </div>
+
+            <div class="field">
+              <label>Desired finish</label>
+              <div class="chip-group" id="finishGroup">
+                <button class="chip" data-finish="matte">Matte</button>
+                <button class="chip active" data-finish="satin">Satin</button>
+                <button class="chip" data-finish="semi">Semi-gloss</button>
+                <button class="chip" data-finish="gloss">Gloss</button>
+              </div>
+            </div>
+
+            <div class="field">
+              <label>Paint quality</label>
+              <div class="chip-group" id="tierGroup">
+                <button class="chip" data-tier="standard">Standard (Azar, Coral, Leyland)</button>
+                <button class="chip active" data-tier="premium">Premium (Caparol, Dullux)</button>
+                <button class="chip" data-tier="luxury">Luxury / Imported</button>
+              </div>
+            </div>
+
+            <div class="flex-between mt-24">
+              <button class="btn btn-ghost" onclick="qNext(2)">← Back</button>
+              <button class="btn btn-primary" onclick="qNext(4)">Next: Paint →</button>
+            </div>
+          </div>
+
+          <!-- STEP 4: Paint products (volume gate). The customer picks the actual
+               paint product(s) they want used on the job. Each line shows live
+               litres/buckets/material-cost from /api/paint-volume/preview. The
+               lines are stored in state.paintLines so booking.html can persist
+               them to /api/paint-volume/quotes/:id/estimates once the quote ID
+               exists, queueing the dispatcher review (volume_status='pending_review'). -->
+          <div class="quote-panel" data-panel="4">
+            <h3 class="mt-24">What paint goes on the wall?</h3>
+            <p>Pick the product(s) you'd like used. You can split it — say, wall paint + ceiling paint + trim enamel — and we'll work out exactly how many buckets each one needs.</p>
+
+            <div id="pvLines"><!-- Lines injected by JS --></div>
+
+            <button type="button" class="pv-add-btn" id="pvAddLine">+ Add another paint product</button>
+
+            <div class="pv-totals" id="pvTotals" hidden>
+              <div class="stat"><strong id="pvTotalLitres">0 L</strong><span>Total paint needed</span></div>
+              <div class="stat"><strong id="pvTotalBuckets">0</strong><span>Buckets to order</span></div>
+              <div class="stat"><strong id="pvTotalCost">GHS 0</strong><span>Estimated material cost</span></div>
+            </div>
+
+            <div class="pv-helper-note">
+              <strong>Heads-up:</strong> a dispatcher reviews these numbers before your quote is finalized — that's why the booking confirmation may take a few minutes after you submit.
+            </div>
+
+            <div class="flex-between mt-24">
+              <button class="btn btn-ghost" onclick="qNext(3)">← Back</button>
+              <button class="btn btn-primary" onclick="qNext(5)">Next: Add-ons →</button>
+            </div>
+          </div>
+
+          <!-- STEP 5: Add-ons -->
+          <div class="quote-panel" data-panel="5">
+            <h3 class="mt-24">Anything else?</h3>
+            <p>Optional extras. Leave blank if none apply.</p>
+
+            <div class="field">
+              <label>Add-ons (select any)</label>
+              <div class="chip-group" id="addonGroup">
+                <button class="chip" data-addon="furniture">Furniture protection</button>
+                <button class="chip" data-addon="move">Furniture moving</button>
+                <button class="chip" data-addon="color">Custom colour match</button>
+                <!-- Percentage uplifts (15% / 20%) are kept in the ADDON map below
+                     and applied to the subtotal in the background. We no longer
+                     surface the multiplier in the chip label — customers see the
+                     all-in price reflected in the running summary instead. -->
+                <button class="chip" data-addon="weekend">Weekend / after-hours</button>
+                <button class="chip" data-addon="rush">Rush: start within 48h</button>
+                <button class="chip" data-addon="waste">Old paint disposal </button>
+              </div>
+            </div>
+
+            <div class="field">
+              <label>Your location (for travel)</label>
+              <select class="select" id="qLocation">
+                <option value="1" selected>Accra Metro (included)</option>
+                <option value="1.08">Tema / Spintex</option>
+                <option value="1.15">Kasoa / Tesano outskirts</option>
+                <option value="1.25">Kumasi / Cape Coast</option>
+                <option value="1.35">Outside major cities</option>
+              </select>
+            </div>
+
+            <div class="alert info mt-16">
+              <strong>Price-lock guarantee:</strong> once you book, this price is fixed. No surprise
+              add-ons on the day — unless you change scope.
+            </div>
+
+            <div class="flex-between mt-24">
+              <button class="btn btn-ghost" onclick="qNext(4)">← Back</button>
+              <button class="btn btn-gold btn-lg" onclick="proceedToBooking()">Book this quote →</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- SUMMARY (live) -->
+        <aside class="summary-card">
+          <div class="flex-between">
+            <h3 style="margin:0;">Your quote</h3>
+            <span class="badge gold" id="qConfidence">Live estimate</span>
+          </div>
+
+          <div class="total" id="qTotal">GHS 0 <small>incl. VAT</small></div>
+          <div class="small" style="color:rgba(255,255,255,0.7);" id="qRange">Range: —</div>
+
+          <div class="surface-preview mt-16" id="qPreview">
+            Choose a service to begin.
+          </div>
+
+          <div style="margin-top:18px;">
+            <div class="summary-row"><span>Service</span><strong id="sService">—</strong></div>
+            <div class="summary-row"><span>Total paintable area</span><strong id="sArea">— m²</strong></div>
+            <div class="summary-row"><span>Labour</span><strong id="sLabour">GHS 0</strong></div>
+            <div class="summary-row"><span>Materials</span><strong id="sMaterials">GHS 0</strong></div>
+            <div class="summary-row"><span>Condition adjustment</span><strong id="sPrep">GHS 0</strong></div>
+            <div class="summary-row"><span>Add-ons</span><strong id="sAddons">GHS 0</strong></div>
+            <div class="summary-row"><span>Travel</span><strong id="sTravel">GHS 0</strong></div>
+          </div>
+
+          <div style="margin-top:16px;">
+            <button class="btn btn-gold btn-block" id="qBookBtn" onclick="proceedToBooking()">Book this quote →</button>
+          </div>
+          <p class="small" style="margin:10px 0 0; color:rgba(255,255,255,0.6);">No payment until you confirm. Quote valid 14 days.</p>
+        </aside>
+      </div>
+    </div>
+  </section>
+
+  <div id="pm-footer"></div>
+
+  <script src="assets/shared.js"></script>
+  <script>
+    pmMountLayout('quote');
+
+    // ---------- Service catalogue ----------
+    const SERVICES = {
+      residential: [
+        { id:'int_wall', name:'Interior Wall Repaint', labor:25, material:45, unit:'m²' },
+        { id:'ext_facade', name:'Exterior Façade', labor:30, material:55, unit:'m²' },
+        { id:'ceilings', name:'Ceilings', labor:20, material:35, unit:'m²' },
+        { id:'doors_trim', name:'Doors & Trim', labor:35, material:50, unit:'m²' },
+        { id:'kitchen_bath', name:'Kitchen / Bath Repaint', labor:30, material:60, unit:'m²' },
+        { id:'whole_house', name:'Whole-House Package', labor:22, material:48, unit:'m²' }
+      ],
+      decorative: [
+        { id:'accent', name:'Accent Walls', labor:45, material:60, unit:'m²' },
+        { id:'faux', name:'Faux Finish (marble, metallic, concrete)', labor:120, material:90, unit:'m²' },
+        { id:'textured', name:'Textured Concrete', labor:80, material:70, unit:'m²' },
+        { id:'limewash', name:'Lime Wash', labor:60, material:60, unit:'m²' },
+        { id:'mural', name:'Mural / Stencil', labor:180, material:80, unit:'m²' }
+      ],
+      commercial: [
+        { id:'office', name:'Office Fit-Out', labor:18, material:22, unit:'m²' },
+        { id:'retail', name:'Retail Storefront', labor:30, material:40, unit:'m²' },
+        { id:'branded', name:'Branded Interior', labor:40, material:50, unit:'m²' },
+        { id:'hotel', name:'Hotel / Hospitality', labor:22, material:25, unit:'m²' },
+        { id:'warehouse', name:'Warehouse / Industrial', labor:30, material:35, unit:'m²' }
+      ],
+      specialty: [
+        { id:'epoxy', name:'Epoxy Flooring', labor:120, material:180, unit:'m²' },
+        { id:'roof', name:'Roof Coating', labor:45, material:60, unit:'m²' },
+        { id:'fence', name:'Fence / Gate Spray', labor:40, material:55, unit:'m²' },
+        { id:'waterproof', name:'Waterproofing System', labor:70, material:95, unit:'m²' },
+        { id:'pool', name:'Pool Paint', labor:110, material:140, unit:'m²' },
+        { id:'antigraffiti', name:'Anti-Graffiti Coating', labor:35, material:55, unit:'m²' }
+      ]
+    };
+
+    const MULT = {
+      scope:     { walls: 1, walls_ceiling: 1.3, walls_ceiling_trim: 1.45, exterior: 1 },
+      surface:   { drywall: 1, concrete: 1.1, wood: 1.15, metal: 1.25 },
+      condition: { new: 0.9, good: 1, prep: 1.25, bad: 1.55 },
+      finish:    { matte: 1, satin: 1.05, semi: 1.12, gloss: 1.18 },
+      tier:      { standard: 0.85, premium: 1, luxury: 1.4 }
+    };
+
+    const ADDON = {
+      furniture: { type:'flat', val: 350, label:'Furniture protection' },
+      move:      { type:'flat', val: 500, label:'Furniture moving' },
+      color:     { type:'flat', val: 250, label:'Custom colour match' },
+      weekend:   { type:'pct',  val: 0.15, label:'Weekend / after-hours' },
+      rush:      { type:'pct',  val: 0.20, label:'Rush start' },
+      waste:     { type:'flat', val: 200, label:'Old paint disposal' }
+    };
+
+    const state = {
+      step: 1,
+      category: 'residential',
+      serviceId: 'int_wall',
+      length: 5, width: 4, height: 3, rooms: 1,
+      scope: 'walls',
+      surface: 'drywall', condition: 'good',
+      finish: 'satin', tier: 'premium',
+      addons: new Set(),
+      travel: 1,
+      // Paint product lines for the volume gate (Step 4). Each line is
+      // { paint_product_id, name, area_sqm, coats, litres_needed, buckets_needed, cost_estimate }.
+      // Booking.html POSTs these to /api/paint-volume/quotes/:id/estimates
+      // once the quote ID exists, queuing the dispatcher review.
+      paintLines: []
+    };
+
+    // ---------- Paint products catalogue (mirrors backend seed in
+    // 024_paint_products.sql). Used as the fallback when /api/paint-volume/products
+    // isn't reachable (file:// preview, dev offline, etc.). The fetch on init
+    // overwrites this with the live list when the API responds. ----------
+    const PV_FALLBACK_PRODUCTS = [
+      { id: 1, name: 'Interior Emulsion (standard)',  type: 'interior',       coverage_m2_per_litre: 11, coats_recommended: 2, price_per_litre: 55,  bucket_size_litres: 20 },
+      { id: 2, name: 'Wall & Ceiling Emulsion',       type: 'wall_ceiling',   coverage_m2_per_litre: 11, coats_recommended: 2, price_per_litre: 50,  bucket_size_litres: 20 },
+      { id: 3, name: 'Furniture & Trim Enamel',       type: 'furniture_trim', coverage_m2_per_litre: 13, coats_recommended: 2, price_per_litre: 95,  bucket_size_litres: 4  },
+      { id: 4, name: 'Floor-based Epoxy',             type: 'floor',          coverage_m2_per_litre:  9, coats_recommended: 2, price_per_litre: 140, bucket_size_litres: 4  },
+      { id: 5, name: 'Exterior Masonry',              type: 'exterior',       coverage_m2_per_litre:  7, coats_recommended: 2, price_per_litre: 75,  bucket_size_litres: 20 },
+      { id: 6, name: 'Air-Purifying Interior',        type: 'air_purifying',  coverage_m2_per_litre: 10, coats_recommended: 2, price_per_litre: 120, bucket_size_litres: 4  },
+      { id: 7, name: 'Pet-Dwelling Washable',         type: 'pet_dwelling',   coverage_m2_per_litre: 10, coats_recommended: 2, price_per_litre: 110, bucket_size_litres: 4  },
+      { id: 8, name: 'Chalkboard Finish',             type: 'chalkboard',     coverage_m2_per_litre:  9, coats_recommended: 2, price_per_litre: 130, bucket_size_litres: 4  },
+      { id: 9, name: 'EMR Shielding',                 type: 'emr_shielding',  coverage_m2_per_litre:  5, coats_recommended: 2, price_per_litre: 350, bucket_size_litres: 4  },
+    ];
+    let pvProducts = PV_FALLBACK_PRODUCTS;
+
+    // Try to pull the live catalog from the backend. Silent on failure —
+    // the fallback list above keeps the form working.
+    (async function pvLoadProducts() {
+      try {
+        const res = await fetch('/api/paint-volume/products');
+        if (!res.ok) return;
+        const j = await res.json();
+        if (j && Array.isArray(j.products) && j.products.length) {
+          pvProducts = j.products;
+          // If the user already opened a line with a fallback product, the
+          // dropdown selection may now be stale. Re-render so options match.
+          pvRenderAllLines();
+        }
+      } catch (_) { /* offline / file:// — keep fallback */ }
+    })();
+
+    // Local volume math — mirrors backend services/paintVolume.js so we can
+    // give live numbers without a backend round-trip on every keystroke.
+    // The waste_factor and rounding match the server, so what the customer
+    // sees is what the dispatcher will see.
+    function pvComputeLine(line) {
+      const product = pvProducts.find(p => p.id === line.paint_product_id);
+      if (!product || !(line.area_sqm > 0) || !(line.coats > 0)) {
+        return { ok: false, error: 'Pick a product and enter the area.' };
+      }
+      const raw     = (line.area_sqm * line.coats) / product.coverage_m2_per_litre;
+      const litres  = Math.round(raw * 1.10 * 100) / 100;             // +10% waste, 2dp
+      const buckets = Math.ceil(litres / product.bucket_size_litres);
+      const cost    = Math.round(buckets * product.bucket_size_litres * product.price_per_litre * 100) / 100;
+      return { ok: true, product, litres, buckets, cost };
+    }
+
+    function pvRenderLine(idx) {
+      const line = state.paintLines[idx];
+      const opt = (p) => `<option value="${p.id}"${p.id === line.paint_product_id ? ' selected' : ''}>${p.name}</option>`;
+      const calc = pvComputeLine(line);
+      const previewHtml = calc.ok ? `
+          <div class="stat"><strong>${calc.litres} L</strong><span>Litres needed</span></div>
+          <div class="stat"><strong>${calc.buckets}</strong><span>Buckets (${calc.product.bucket_size_litres} L)</span></div>
+          <div class="stat"><strong>${pmFormatGHS(calc.cost)}</strong><span>Material cost</span></div>
+      ` : `
+          <div class="stat err" style="grid-column:1/-1;"><strong>${calc.error}</strong></div>
+      `;
+      return `
+        <div class="pv-line" data-pv-idx="${idx}">
+          <div class="pv-line-head">
+            <strong>Paint product #${idx + 1}</strong>
+            <button type="button" class="pv-line-remove" data-pv-remove="${idx}" aria-label="Remove this paint line">Remove</button>
+          </div>
+          <div class="row">
+            <div>
+              <label>Paint product</label>
+              <select class="select" data-pv-field="paint_product_id">
+                ${pvProducts.map(opt).join('')}
+              </select>
+            </div>
+            <div>
+              <label>Area (m²)</label>
+              <input class="input" type="number" min="5" step="0.1"
+                     data-pv-field="area_sqm" value="${line.area_sqm}" />
+            </div>
+            <div>
+              <label>Coats</label>
+              <input class="input" type="number" min="1" max="5" step="1"
+                     data-pv-field="coats" value="${line.coats}" />
+            </div>
+          </div>
+          <div class="pv-preview">${previewHtml}</div>
+        </div>`;
+    }
+
+    function pvRenderAllLines() {
+      const wrap = document.getElementById('pvLines');
+      if (!wrap) return;
+      wrap.innerHTML = state.paintLines.map((_, i) => pvRenderLine(i)).join('');
+      pvRenderTotals();
+    }
+
+    function pvRenderTotals() {
+      const totalsEl = document.getElementById('pvTotals');
+      if (!totalsEl) return;
+      if (state.paintLines.length === 0) { totalsEl.setAttribute('hidden', ''); return; }
+      let L = 0, B = 0, C = 0, anyOk = false;
+      for (const line of state.paintLines) {
+        const r = pvComputeLine(line);
+        if (r.ok) { L += r.litres; B += r.buckets; C += r.cost; anyOk = true; }
+      }
+      if (!anyOk) { totalsEl.setAttribute('hidden', ''); return; }
+      totalsEl.removeAttribute('hidden');
+      document.getElementById('pvTotalLitres').textContent  = `${Math.round(L * 100) / 100} L`;
+      document.getElementById('pvTotalBuckets').textContent = String(B);
+      document.getElementById('pvTotalCost').textContent    = pmFormatGHS(C);
+    }
+
+    function pvAddLine() {
+      // Pre-fill the first new line with the customer's computed total area
+      // so they only have to tweak it. The default product is the catalog's
+      // first entry; coats use that product's recommended value.
+      const product = pvProducts[0];
+      const area = state.paintLines.length === 0 ? Math.round(calcArea() * 10) / 10 : 0;
+      state.paintLines.push({
+        paint_product_id: product.id,
+        area_sqm: area > 0 ? area : 20,
+        coats: product.coats_recommended || 2,
+      });
+      pvRenderAllLines();
+    }
+
+    function pvBindEvents() {
+      const wrap = document.getElementById('pvLines');
+      if (!wrap) return;
+      wrap.addEventListener('input', (e) => {
+        const card = e.target.closest('.pv-line'); if (!card) return;
+        const idx = Number(card.dataset.pvIdx);
+        const field = e.target.dataset.pvField; if (!field) return;
+        const v = e.target.value;
+        state.paintLines[idx][field] = field === 'paint_product_id' ? Number(v) : Number(v);
+        // Re-render just this card (so the preview updates) and recompute totals.
+        card.outerHTML = pvRenderLine(idx);
+        pvRenderTotals();
+      });
+      wrap.addEventListener('change', (e) => {
+        if (e.target.dataset.pvField === 'paint_product_id') {
+          // Selecting a new product changes the coats default — re-render with the new default.
+          const card = e.target.closest('.pv-line'); if (!card) return;
+          const idx = Number(card.dataset.pvIdx);
+          const product = pvProducts.find(p => p.id === state.paintLines[idx].paint_product_id);
+          if (product && product.coats_recommended) {
+            state.paintLines[idx].coats = product.coats_recommended;
+          }
+          card.outerHTML = pvRenderLine(idx);
+          pvRenderTotals();
+        }
+      });
+      wrap.addEventListener('click', (e) => {
+        const rm = e.target.closest('[data-pv-remove]');
+        if (!rm) return;
+        const idx = Number(rm.dataset.pvRemove);
+        state.paintLines.splice(idx, 1);
+        pvRenderAllLines();
+      });
+      document.getElementById('pvAddLine').addEventListener('click', pvAddLine);
+    }
+
+    // ---------- Populate services dropdown ----------
+    function populateServices() {
+      const sel = document.getElementById('qService');
+      const list = SERVICES[state.category];
+      sel.innerHTML = list.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+      // Try to keep current service if still present
+      if (list.find(s => s.id === state.serviceId)) sel.value = state.serviceId;
+      else { state.serviceId = list[0].id; sel.value = list[0].id; }
+    }
+
+    // ---------- Area calc ----------
+    function calcArea() {
+      const { length, width, height, rooms, scope } = state;
+      if (scope === 'exterior') {
+        // perimeter * height, per room
+        const perim = 2*(length + width);
+        return perim * height * rooms;
+      }
+      // Interior walls: perimeter * height
+      const walls = 2*(length + width) * height;
+      let area = walls;
+      if (scope === 'walls_ceiling' || scope === 'walls_ceiling_trim') area += length * width;
+      // trim adds ~8% to wall area for door frames, skirting
+      if (scope === 'walls_ceiling_trim') area *= 1.08;
+      return area * rooms;
+    }
+
+    // ---------- Quote calc ----------
+    function calcQuote() {
+      const svc = SERVICES[state.category].find(s => s.id === state.serviceId) || SERVICES[state.category][0];
+      const area = calcArea();
+
+      const surfaceM = MULT.surface[state.surface];
+      const finishM  = MULT.finish[state.finish];
+      const tierM    = MULT.tier[state.tier];
+      const scopeM   = MULT.scope[state.scope];
+      const condM    = MULT.condition[state.condition];
+
+      const laborRate    = svc.labor * surfaceM * finishM * scopeM;
+      const materialRate = svc.material * tierM * surfaceM * finishM;
+
+      const labourBase   = laborRate * area;
+      const materialBase = materialRate * area;
+
+      // Prep fee derived from condition multiplier relative to "good"
+      const prep = ((condM - 1)) * (labourBase + materialBase);
+
+      const subtotal0 = labourBase + materialBase + prep;
+
+      // Addons
+      let addonFlat = 0, addonPct = 0;
+      state.addons.forEach(a => {
+        const def = ADDON[a]; if (!def) return;
+        if (def.type === 'flat') addonFlat += def.val;
+        else addonPct += def.val;
+      });
+      const addonSub = addonFlat + subtotal0 * addonPct;
+
+      // Travel
+      const travelSub = (subtotal0 + addonSub) * (state.travel - 1);
+
+      const totalExVAT = subtotal0 + addonSub + travelSub;
+      const vat = totalExVAT * 0.125; // Ghana 12.5% VAT approx
+      const total = totalExVAT + vat;
+
+      return {
+        svc, area,
+        labour: labourBase,
+        materials: materialBase,
+        prep,
+        addons: addonSub,
+        travel: travelSub,
+        total, vat, totalExVAT,
+        low: Math.round(total * 0.92),
+        high: Math.round(total * 1.08)
+      };
+    }
+
+    // ---------- Render summary ----------
+    function render() {
+      const q = calcQuote();
+      document.getElementById('qTotal').innerHTML = pmFormatGHS(q.total) + ' <small>incl. VAT</small>';
+      document.getElementById('qRange').textContent = `Range: ${pmFormatGHS(q.low)} – ${pmFormatGHS(q.high)}`;
+      document.getElementById('sService').textContent = q.svc.name;
+      document.getElementById('sArea').textContent = q.area.toFixed(1) + ' m²';
+      document.getElementById('sLabour').textContent = pmFormatGHS(q.labour);
+      document.getElementById('sMaterials').textContent = pmFormatGHS(q.materials);
+      document.getElementById('sPrep').textContent = pmFormatGHS(q.prep);
+      document.getElementById('sAddons').textContent = pmFormatGHS(q.addons);
+      document.getElementById('sTravel').textContent = pmFormatGHS(q.travel);
+
+      // Preview sentence
+      const catName = { residential:'residential', decorative:'decorative', commercial:'commercial', specialty:'specialty' }[state.category];
+      const tierName = { standard:'Standard-grade', premium:'Premium', luxury:'Luxury / imported' }[state.tier];
+      const roomsTxt = state.rooms > 1 ? `${state.rooms} similar rooms` : 'a single room';
+      document.getElementById('qPreview').innerHTML =
+        `<strong>${q.svc.name}</strong> (${catName}) in ${roomsTxt}. ~${q.area.toFixed(0)} m² covered with <strong>${tierName}</strong> paint, ${state.finish} finish. Prep level: <strong>${state.condition}</strong>.`;
+
+      // Save for booking page
+      pmSaveQuote({ ...structuredClone({ ...state, addons: [...state.addons] }), quote: q, timestamp: Date.now() });
+    }
+
+    // ---------- Wire up controls ----------
+    function bindChipGroup(groupId, field, opts = {}) {
+      const group = document.getElementById(groupId);
+      if (!group) return;
+      group.addEventListener('click', e => {
+        const btn = e.target.closest('button.chip');
+        if (!btn) return;
+        if (opts.multi) {
+          btn.classList.toggle('active');
+          const val = btn.dataset[field];
+          if (btn.classList.contains('active')) state.addons.add(val);
+          else state.addons.delete(val);
+        } else {
+          group.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+          btn.classList.add('active');
+          state[field] = btn.dataset[field];
+          if (opts.onChange) opts.onChange();
+        }
+        render();
+      });
+    }
+
+    bindChipGroup('catGroup', 'cat', { onChange: () => {
+      state.category = document.querySelector('#catGroup .chip.active').dataset.cat;
+      populateServices();
+    }});
+    bindChipGroup('scopeGroup', 'scope');
+    bindChipGroup('surfaceGroup', 'surface');
+    bindChipGroup('conditionGroup', 'condition');
+    bindChipGroup('finishGroup', 'finish');
+    bindChipGroup('tierGroup', 'tier');
+    bindChipGroup('addonGroup', 'addon', { multi: true });
+
+    document.getElementById('qService').addEventListener('change', e => {
+      state.serviceId = e.target.value; render();
+    });
+    ['qLength','qWidth','qHeight','qRooms'].forEach(id => {
+      document.getElementById(id).addEventListener('input', e => {
+        const field = id.replace('q','').toLowerCase();
+        state[field] = parseFloat(e.target.value) || 0;
+        render();
+      });
+    });
+    document.getElementById('qLocation').addEventListener('change', e => {
+      state.travel = parseFloat(e.target.value);
+      render();
+    });
+
+    // ---------- Step nav ----------
+    function qNext(n) {
+      document.querySelectorAll('.quote-panel').forEach(p => p.classList.remove('active'));
+      document.querySelector(`.quote-panel[data-panel="${n}"]`).classList.add('active');
+      document.querySelectorAll('#qSteps button').forEach(b => b.classList.toggle('active', b.dataset.step == n));
+      document.getElementById('qProgress').style.width = (n * 20) + '%';
+      state.step = n;
+      // Entering the paint step for the first time — auto-add a line so the
+      // customer sees the picker instead of just an empty CTA. Pre-filled
+      // with their computed area so most customers can just glance and move on.
+      if (n === 4 && state.paintLines.length === 0) pvAddLine();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+    // Click step tab to jump
+    document.querySelectorAll('#qSteps button').forEach(b => b.addEventListener('click', () => qNext(Number(b.dataset.step))));
+
+    function proceedToBooking() {
+      const q = calcQuote();
+      if (q.total < 100) {
+        pmToast('Please complete the form — the quote looks too low.', 'warn');
+        return;
+      }
+      // Persist current state with addons as array. paintLines goes along for
+      // the ride; booking.html POSTs them to /api/paint-volume/quotes/:id/estimates
+      // after the backend quote is created, queueing the dispatcher review.
+      pmSaveQuote({
+        ...state,
+        addons: [...state.addons],
+        paintLines: state.paintLines.map(l => ({ ...l })),
+        quote: q,
+        timestamp: Date.now()
+      });
+      window.location.href = 'booking.html';
+    }
+
+    // ---------- Init ----------
+    populateServices();
+    pvBindEvents();
+    render();
+  </script>
+</body>
+</html>

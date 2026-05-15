@@ -1,0 +1,379 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" type="image/png" href="../assets/img/favicon.png" />
+  <title>Approvals — Paint Masters Dispatcher</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/admin.css" />
+  <style>
+    .app-row {
+      display: grid; grid-template-columns: 56px 1fr auto;
+      gap: 14px; align-items: center;
+      padding: 16px 18px;
+      background: #fff; border: 1px solid var(--ink-100); border-radius: 14px;
+      margin-bottom: 12px;
+    }
+    .app-row .avatar {
+      width: 50px; height: 50px; border-radius: 50%;
+      background: linear-gradient(135deg, var(--navy-700), var(--gold-500));
+      color: #fff; font-weight: 700; font-size: 1rem;
+      display: grid; place-items: center;
+    }
+    .app-row .meta strong { color: var(--navy-900); font-size: 1.02rem; display: block; }
+    .app-row .meta small { color: var(--ink-500); font-size: 0.84rem; display: block; line-height: 1.5; }
+    .app-row .meta .specs {
+      margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px;
+    }
+    .app-row .meta .specs span {
+      background: var(--gold-100); color: #6B4F00;
+      font-size: 0.72rem; padding: 2px 8px; border-radius: 999px; font-weight: 600;
+    }
+    .app-actions { display: flex; gap: 6px; flex-shrink: 0; }
+    .app-actions button {
+      padding: 8px 14px; border-radius: 8px; font-size: 0.85rem; font-weight: 600;
+      cursor: pointer; border: 1.5px solid;
+    }
+    .btn-approve { background: var(--green); color: #fff; border-color: var(--green); }
+    .btn-approve:hover { background: #196d44; border-color: #196d44; }
+    .btn-view  { background: #fff; color: var(--navy-900); border-color: var(--ink-300); }
+    .btn-view:hover { border-color: var(--navy-700); }
+    .btn-reject { background: #fff; color: var(--err); border-color: var(--ink-300); }
+    .btn-reject:hover { background: #FFF5F5; border-color: var(--err); }
+
+    .empty {
+      text-align: center; padding: 60px 20px;
+      background: #fff; border: 1px dashed var(--ink-300); border-radius: 14px;
+      color: var(--ink-500);
+    }
+    .empty .ico { font-size: 2.4rem; margin-bottom: 10px; }
+
+    .stat-strip { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 22px; }
+    .stat-card { background: #fff; border: 1px solid var(--ink-100); border-radius: 12px; padding: 14px 18px; }
+    .stat-card .lbl { font-size: 0.74rem; color: var(--ink-500); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }
+    .stat-card .val { font-family: var(--font-display); font-size: 1.7rem; color: var(--navy-900); font-weight: 700; margin-top: 4px; }
+
+    /* Detail modal — shows full bio + refs when "View" is clicked. */
+    .modal-bg {
+      position: fixed; inset: 0; background: rgba(11,31,58,0.45);
+      display: none; align-items: center; justify-content: center;
+      z-index: 100; padding: 20px;
+    }
+    .modal-bg.show { display: flex; }
+    .modal-card {
+      background: #fff; border-radius: 16px; max-width: 560px; width: 100%;
+      padding: 28px 30px; max-height: 90vh; overflow-y: auto;
+    }
+    .modal-card h3 { margin: 0 0 4px; }
+    .modal-card .grid { display: grid; grid-template-columns: 110px 1fr; gap: 8px 14px; margin: 16px 0; font-size: 0.92rem; }
+    .modal-card .grid .label { color: var(--ink-500); }
+    .modal-card .grid .value { color: var(--navy-900); font-weight: 500; }
+    .modal-card pre { background: var(--ink-50); border: 1px solid var(--ink-100); border-radius: 8px; padding: 10px 14px; font-family: inherit; font-size: 0.88rem; white-space: pre-wrap; color: var(--ink-700); margin: 0; }
+    .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--ink-100); }
+
+    /* Password reveal — shown after approving so admin can share with applicant. */
+    .password-reveal {
+      background: var(--gold-100); border: 1px solid #F2D04A;
+      border-radius: 12px; padding: 14px 18px; margin-top: 16px;
+    }
+    .password-reveal strong { display: block; color: #4D3800; }
+    .password-reveal code {
+      background: #fff; padding: 4px 10px; border-radius: 6px;
+      font-size: 1.05rem; letter-spacing: 0.05em;
+      display: inline-block; margin-top: 6px; color: var(--navy-900);
+    }
+  </style>
+</head>
+<body>
+  <div class="admin-shell">
+    <div id="admin-sidebar"></div>
+    <div class="admin-main">
+      <div id="admin-topbar"></div>
+      <div class="main">
+
+        <div class="page-head">
+          <div>
+            <h1>Approvals</h1>
+            <div class="sub">Review applications from people who want to join Paint Masters as artisans, then approve or reject.</div>
+          </div>
+        </div>
+
+        <div class="stat-strip mt-24">
+          <div class="stat-card"><div class="lbl">Pending</div><div class="val" id="statPending">—</div></div>
+          <div class="stat-card"><div class="lbl">Approved this month</div><div class="val" id="statApproved">—</div></div>
+          <div class="stat-card"><div class="lbl">Rejected this month</div><div class="val" id="statRejected">—</div></div>
+        </div>
+
+        <h3 style="margin-top:32px;font-size:1.1rem;color:var(--navy-900);">Painter applications</h3>
+        <div id="appsList"></div>
+
+        <!-- Customer photo moderation queue. Pulls from
+             GET /api/admin/uploads/pending. Each row is a thumbnail with
+             the customer name, booking ref, caption, and approve/reject
+             buttons. Approving makes the photo visible on the customer's
+             tracker; rejecting hides it (file stays on disk for audit). -->
+        <h3 style="margin-top:36px;font-size:1.1rem;color:var(--navy-900);">Photo moderation queue
+          <span id="photoQueueCount" style="background:var(--gold-100);color:#6B4F00;font-size:0.7rem;font-weight:700;padding:3px 9px;border-radius:999px;letter-spacing:0.06em;text-transform:uppercase;margin-left:8px;vertical-align:middle;">0</span>
+        </h3>
+        <p class="small" style="color:var(--ink-500);margin:0 0 14px;">Customer-uploaded job photos waiting to be approved before they show on the tracker.</p>
+        <div id="photoQueue"></div>
+
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-bg" id="detailModal">
+    <div class="modal-card" id="detailCard"></div>
+  </div>
+
+  <script src="../assets/shared.js"></script>
+  <script src="assets/admin-shared.js"></script>
+  <script>
+    adminMount('approvals');
+
+    // Approval log (separate from pmUsers — stores who approved/rejected what + when).
+    const APPROVAL_LOG_KEY = 'pm_approval_log_v1';
+    function loadLog() {
+      try { return JSON.parse(localStorage.getItem(APPROVAL_LOG_KEY) || '[]'); }
+      catch (e) { return []; }
+    }
+    function saveLog(l) { localStorage.setItem(APPROVAL_LOG_KEY, JSON.stringify(l)); }
+
+    function thisMonthCount(action) {
+      const m = new Date().toISOString().slice(0, 7);
+      return loadLog().filter(e => e.action === action && e.t.startsWith(m)).length;
+    }
+
+    function render() {
+      const pending = pmUsers.list({ status: 'pending', role: 'painter' });
+      document.getElementById('statPending').textContent  = pending.length;
+      document.getElementById('statApproved').textContent = thisMonthCount('approve');
+      document.getElementById('statRejected').textContent = thisMonthCount('reject');
+
+      const host = document.getElementById('appsList');
+      if (pending.length === 0) {
+        host.innerHTML = `
+          <div class="empty">
+            <div class="ico">✅</div>
+            <strong style="display:block;color:var(--navy-900);font-size:1.05rem;margin-bottom:4px;">All caught up.</strong>
+            <p>No applications waiting. New artisan applications will appear here as they come in.</p>
+          </div>`;
+        return;
+      }
+
+      host.innerHTML = pending.map(p => {
+        const initials = (p.name || 'PM').split(/\s+/).map(s => s[0]).slice(0, 2).join('').toUpperCase();
+        const specs = (p.meta && p.meta.specs) ? p.meta.specs : [];
+        const years = p.meta?.years ?? '?';
+        return `
+          <div class="app-row" data-id="${p.id}">
+            <div class="avatar">${initials}</div>
+            <div class="meta">
+              <strong>${p.name}</strong>
+              <small>${p.phone}${p.email ? ' · ' + p.email : ''} · ${p.region} · ${years} years</small>
+              <div class="specs">${specs.map(s => `<span>${s}</span>`).join('')}</div>
+            </div>
+            <div class="app-actions">
+              <button class="btn-view"    onclick="viewApp('${p.id}')">View</button>
+              <button class="btn-approve" onclick="approve('${p.id}')">Approve</button>
+              <button class="btn-reject"  onclick="reject('${p.id}')">Reject</button>
+            </div>
+          </div>`;
+      }).join('');
+    }
+
+    function viewApp(id) {
+      const p = pmUsers.findById(id);
+      if (!p) return;
+      const m = p.meta || {};
+      document.getElementById('detailCard').innerHTML = `
+        <h3>${p.name}</h3>
+        <div class="sub" style="color:var(--ink-500);font-size:0.88rem;">Application received ${new Date(p.created_at).toLocaleDateString('en-GB', {day:'numeric',month:'short',year:'numeric'})}</div>
+        <div class="grid">
+          <div class="label">Phone</div>     <div class="value">${p.phone}</div>
+          <div class="label">Email</div>     <div class="value">${p.email || '—'}</div>
+          <div class="label">Region</div>    <div class="value">${p.region}</div>
+          <div class="label">Experience</div><div class="value">${m.years ?? '?'} years</div>
+          <div class="label">Specs</div>     <div class="value">${(m.specs || []).join(' · ') || '—'}</div>
+        </div>
+        <h4 style="margin:18px 0 6px;font-size:0.95rem;">About their work</h4>
+        <pre>${m.bio || '(none provided)'}</pre>
+        <h4 style="margin:18px 0 6px;font-size:0.95rem;">References</h4>
+        <pre>${m.refs || '(none provided)'}</pre>
+        <div class="modal-actions">
+          <button class="btn-view"    onclick="closeModal()">Close</button>
+          <button class="btn-reject"  onclick="reject('${p.id}'); closeModal();">Reject</button>
+          <button class="btn-approve" onclick="approve('${p.id}'); closeModal();">Approve</button>
+        </div>
+      `;
+      document.getElementById('detailModal').classList.add('show');
+    }
+    function closeModal() {
+      document.getElementById('detailModal').classList.remove('show');
+    }
+    document.getElementById('detailModal').addEventListener('click', e => {
+      if (e.target.id === 'detailModal') closeModal();
+    });
+
+    function approve(id) {
+      const p = pmUsers.findById(id);
+      if (!p) return;
+      // Generate the credentials they'll sign in with.
+      const password = pmUsers.generatePassword();
+      pmUsers.update(id, { status: 'active', password });
+      // Log the approval.
+      const log = loadLog();
+      log.unshift({ action: 'approve', userId: id, name: p.name, t: new Date().toISOString() });
+      saveLog(log);
+      // Also drop them into the admin store as a real artisan (so they show in jobs/artisan filters).
+      mutate(s => {
+        const initials = (p.name || 'PM').split(/\s+/).map(t => t[0]).slice(0, 2).join('').toUpperCase();
+        const colors = ['#D7263D', '#F5B800', '#1E7F4F', '#2E70C9', '#EA7317'];
+        s.artisans.unshift({
+          id: 'a_' + Date.now().toString(36),
+          initials,
+          name: p.name,
+          specs: (p.meta && p.meta.specs) || [],
+          years: (p.meta && p.meta.years) || 0,
+          rating: 0,
+          jobs: 0,
+          region: p.region,
+          status: 'available',
+          color: colors[Math.floor(Math.random() * colors.length)]
+        });
+      });
+      // Show admin the credentials so they can pass them along.
+      showCredentials(p, password);
+      render();
+      updateNavCounts();
+    }
+
+    function reject(id) {
+      const p = pmUsers.findById(id);
+      if (!p) return;
+      if (!confirm(`Reject ${p.name}'s application? This removes them from the pending list.`)) return;
+      pmUsers.remove(id);
+      const log = loadLog();
+      log.unshift({ action: 'reject', userId: id, name: p.name, t: new Date().toISOString() });
+      saveLog(log);
+      toast(`${p.name} rejected.`);
+      render();
+      updateNavCounts();
+    }
+
+    function showCredentials(p, password) {
+      document.getElementById('detailCard').innerHTML = `
+        <h3>${p.name} approved 🎉</h3>
+        <p style="color:var(--ink-700);">Send the following credentials to the new Paint Master. They'll be prompted to change the password on first sign-in.</p>
+        <div class="password-reveal">
+          <strong>Phone</strong>
+          <code>${p.phone}</code>
+          <strong style="margin-top:10px;">Temporary password</strong>
+          <code id="pwdShow">${password}</code>
+        </div>
+        <p class="small" style="color:var(--ink-500);margin-top:14px;">
+          Once SMS via Hubtel is wired, this will auto-send. For now, copy and share manually.
+        </p>
+        <div class="modal-actions">
+          <button class="btn-view" onclick="navigator.clipboard.writeText('${password}'); this.textContent='Copied!'; setTimeout(()=>this.textContent='Copy password', 1400);">Copy password</button>
+          <button class="btn-approve" onclick="closeModal()">Done</button>
+        </div>
+      `;
+      document.getElementById('detailModal').classList.add('show');
+    }
+
+    // ─────────────────────────────────────────────
+    // Photo moderation queue.
+    // Polls /api/admin/uploads/pending. Each row shows a thumbnail (served
+    // from /api/uploads/job-photo/:id), the customer name, booking ref,
+    // caption, and approve/reject buttons. Backend offline → friendly
+    // empty-state pointing at how it'll wire up post-deploy.
+    // ─────────────────────────────────────────────
+    async function loadPhotoQueue() {
+      const host = document.getElementById('photoQueue');
+      const badge = document.getElementById('photoQueueCount');
+      try {
+        const tok = (typeof pmAuth !== 'undefined' && pmAuth.token) ? pmAuth.token() : null;
+        const r = await fetch('/api/admin/uploads/pending', {
+          headers: { 'Authorization': 'Bearer ' + (tok || '') }
+        });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        const data = await r.json();
+        renderPhotoQueue(data.photos || []);
+        badge.textContent = (data.photos || []).length;
+      } catch (e) {
+        // Offline / endpoint not deployed → show a clear empty state.
+        host.innerHTML = `
+          <div class="empty">
+            <div class="ico">📸</div>
+            <strong style="display:block;color:var(--navy-900);font-size:1.05rem;margin-bottom:4px;">Backend not reachable</strong>
+            <p>The photo queue lives at <code>/api/admin/uploads/pending</code>. Once the backend is running on your server, customer uploads land here for review.</p>
+          </div>`;
+        badge.textContent = '0';
+      }
+    }
+    function renderPhotoQueue(rows) {
+      const host = document.getElementById('photoQueue');
+      if (!rows.length) {
+        host.innerHTML = `
+          <div class="empty">
+            <div class="ico">✅</div>
+            <strong style="display:block;color:var(--navy-900);font-size:1.05rem;margin-bottom:4px;">No photos waiting</strong>
+            <p>New customer uploads will land here for review.</p>
+          </div>`;
+        return;
+      }
+      const tok = (typeof pmAuth !== 'undefined' && pmAuth.token) ? pmAuth.token() : '';
+      host.innerHTML = rows.map(r => `
+        <div class="app-row" style="grid-template-columns:96px 1fr auto;">
+          <img src="/api/uploads/job-photo/${r.id}" alt="" style="width:90px;height:90px;object-fit:cover;border-radius:10px;border:1px solid var(--ink-100);" referrerpolicy="no-referrer" />
+          <div class="meta">
+            <strong>${escA(r.customer_name)} <span class="small" style="color:var(--ink-500);font-weight:500;">· ${escA(r.booking_id)}</span></strong>
+            <small>${escA(r.original_name)} · ${(r.size_bytes/1024).toFixed(0)} KB · ${escA(r.mime_type)}</small>
+            ${r.caption ? `<small style="color:var(--ink-700);font-style:italic;">"${escA(r.caption)}"</small>` : ''}
+            <small>${escA(r.address || '')}</small>
+          </div>
+          <div class="app-actions">
+            <button class="btn-approve" onclick="approvePhoto(${r.id})">Approve</button>
+            <button class="btn-reject"  onclick="rejectPhoto(${r.id})">Reject</button>
+          </div>
+        </div>`).join('');
+    }
+    function escA(s) { return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+    async function approvePhoto(id) {
+      const tok = (typeof pmAuth !== 'undefined' && pmAuth.token) ? pmAuth.token() : '';
+      const r = await fetch('/api/admin/uploads/' + id, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + tok },
+        body: JSON.stringify({ action: 'approve' })
+      });
+      if (r.ok) {
+        toast('Photo approved.');
+        if (typeof pmActivity !== 'undefined') pmActivity.emit({ kind: 'photo_request', title: `Photo approved · #${id}`, source: { role: 'admin', name: (pmAuth.user()?.name || 'Admin') } });
+        loadPhotoQueue();
+      } else { toast('Approval failed.', 'warn'); }
+    }
+    async function rejectPhoto(id) {
+      const reason = prompt('Reason for rejection (optional, shown to the customer):') || '';
+      const tok = (typeof pmAuth !== 'undefined' && pmAuth.token) ? pmAuth.token() : '';
+      const r = await fetch('/api/admin/uploads/' + id, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + tok },
+        body: JSON.stringify({ action: 'reject', reason })
+      });
+      if (r.ok) {
+        toast('Photo rejected.');
+        if (typeof pmActivity !== 'undefined') pmActivity.emit({ kind: 'photo_request', severity: 'warn', title: `Photo rejected · #${id}`, sub: reason || '', source: { role: 'admin', name: (pmAuth.user()?.name || 'Admin') } });
+        loadPhotoQueue();
+      } else { toast('Rejection failed.', 'warn'); }
+    }
+
+    render();
+    loadPhotoQueue();
+  </script>
+</body>
+</html>

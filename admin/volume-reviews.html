@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" type="image/png" href="../assets/img/favicon.png" />
+  <title>Volume Reviews — Paint Masters Dispatcher</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/admin.css" />
+  <style>
+    /* ---- Dispatcher volume-review queue ---- */
+    .vr-head { display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; }
+    .vr-head h1 { margin: 0; }
+    .vr-head .sub { color: var(--ink-500); font-size: 0.95rem; }
+    .vr-status-tabs { display:flex; gap: 8px; flex-wrap: wrap; margin: 18px 0 12px; }
+    .vr-status-tab {
+      background: #fff; border: 1px solid var(--ink-100); border-radius: 999px;
+      padding: 6px 14px; font-size: 0.85rem; font-weight: 600; color: var(--ink-700);
+      cursor: pointer; transition: all 0.15s;
+    }
+    .vr-status-tab:hover { border-color: var(--navy-700); color: var(--navy-900); }
+    .vr-status-tab.active { background: var(--navy-900); color: #fff; border-color: var(--navy-900); }
+    .vr-status-tab .count {
+      display:inline-block; background: rgba(255,255,255,0.15); color: inherit;
+      padding: 0 6px; border-radius: 999px; font-size: 0.72rem; margin-left: 6px;
+    }
+    .vr-status-tab:not(.active) .count { background: var(--ink-100); color: var(--ink-700); }
+
+    .vr-quote-card {
+      background: #fff; border: 1px solid var(--ink-100); border-radius: var(--radius-lg);
+      margin-bottom: 16px; overflow: hidden;
+    }
+    .vr-quote-head {
+      display:flex; justify-content:space-between; align-items:flex-start; gap:12px;
+      padding: 16px 20px; background: linear-gradient(180deg, #f7faff, #ffffff);
+      border-bottom: 1px solid var(--ink-100); flex-wrap: wrap;
+    }
+    .vr-quote-head .id { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.85rem; color: var(--ink-500); }
+    .vr-quote-head h3 { margin: 4px 0 6px; font-size: 1.05rem; }
+    .vr-quote-meta { font-size: 0.86rem; color: var(--ink-700); }
+    .vr-quote-meta span { margin-right: 14px; }
+    .vr-quote-meta strong { color: var(--navy-900); }
+
+    .vr-status-badge {
+      font-size: 0.7rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase;
+      padding: 4px 10px; border-radius: 999px;
+    }
+    .vr-status-pending_review  { background: #fff5d7; color: #8b5a00; }
+    .vr-status-confirmed       { background: #d6f1d8; color: #1a5a23; }
+    .vr-status-rejected        { background: #fbdada; color: #8a1414; }
+    .vr-status-not_required    { background: #e8eef5; color: #344a66; }
+
+    .vr-lines {
+      padding: 6px 20px 16px;
+      overflow-x: auto;
+    }
+    .vr-lines table {
+      width: 100%; border-collapse: collapse; font-size: 0.92rem;
+    }
+    .vr-lines th, .vr-lines td {
+      text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--ink-100);
+    }
+    .vr-lines th {
+      font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em;
+      color: var(--ink-500); font-weight: 700;
+    }
+    .vr-lines td.num   { text-align: right; font-variant-numeric: tabular-nums; }
+    .vr-lines td strong { color: var(--navy-900); }
+    .vr-lines tfoot td {
+      background: #f7faff; font-weight: 700; color: var(--navy-900);
+      border-bottom: 0; border-top: 2px solid var(--navy-900);
+    }
+
+    .vr-actions {
+      padding: 14px 20px; display: flex; justify-content: flex-end; gap: 10px;
+      background: #fafbfc; border-top: 1px solid var(--ink-100);
+    }
+    .vr-actions .reason {
+      flex: 1; padding: 8px 12px; border: 1px solid var(--ink-300); border-radius: var(--radius);
+      font: inherit; font-size: 0.9rem;
+    }
+
+    .vr-empty {
+      padding: 60px 20px; text-align: center; color: var(--ink-500);
+    }
+    .vr-empty strong { display:block; color: var(--navy-900); font-size: 1.1rem; margin-bottom: 6px; }
+
+    .vr-loading {
+      padding: 40px; text-align: center; color: var(--ink-500); font-size: 0.95rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="admin-shell">
+    <div id="admin-sidebar"></div>
+    <div class="admin-main">
+      <div id="admin-topbar"></div>
+      <div class="main">
+
+        <div class="page-head">
+          <div class="vr-head">
+            <h1>Volume Reviews</h1>
+            <span class="vr-status-badge vr-status-pending_review">Dispatcher</span>
+          </div>
+          <div class="page-actions">
+            <button class="btn btn-outline" onclick="vrLoadQueue()">↺ Refresh</button>
+          </div>
+        </div>
+        <p class="sub" style="color:var(--ink-500); margin-top:-6px;">
+          Quotes waiting for a paint-volume sign-off. Confirm the litres and bucket count look right before the customer's quote can be finalized into a contract.
+        </p>
+
+        <div class="vr-status-tabs" id="vrTabs">
+          <button class="vr-status-tab active" data-status="pending_review">Pending review <span class="count" id="vrCount-pending_review">0</span></button>
+          <button class="vr-status-tab" data-status="confirmed">Confirmed <span class="count" id="vrCount-confirmed">0</span></button>
+          <button class="vr-status-tab" data-status="rejected">Rejected <span class="count" id="vrCount-rejected">0</span></button>
+        </div>
+
+        <div id="vrQueue">
+          <div class="vr-loading">Loading queue…</div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <script src="../assets/shared.js"></script>
+  <script src="assets/admin-shared.js"></script>
+  <script>
+    adminMount('volume-reviews');
+
+    // ----- state -----
+    const state = {
+      tab: 'pending_review',
+      quotes: [],     // current visible list
+      counts: { pending_review: 0, confirmed: 0, rejected: 0 },
+    };
+
+    // ----- helpers -----
+    function authHeaders() {
+      const t = (typeof pmAuth !== 'undefined' && pmAuth.token) ? pmAuth.token() : null;
+      return t ? { 'Authorization': `Bearer ${t}` } : {};
+    }
+    function fmtGHS(n) {
+      try { return pmFormatGHS(n); }
+      catch (_) { return 'GHS ' + Math.round(Number(n) || 0).toLocaleString(); }
+    }
+    function esc(s) {
+      return String(s == null ? '' : s)
+        .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+        .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+    }
+    function fmtDate(iso) {
+      if (!iso) return '—';
+      try {
+        const d = new Date(iso);
+        return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+             + ' ' + d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+      } catch { return iso; }
+    }
+
+    // ----- load + count -----
+    async function vrLoadQueue() {
+      document.getElementById('vrQueue').innerHTML = '<div class="vr-loading">Loading queue…</div>';
+      try {
+        const res = await fetch(`/api/quotes?volume_status=${state.tab}&limit=100`, { headers: authHeaders() });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const j = await res.json();
+        state.quotes = Array.isArray(j.quotes) ? j.quotes : [];
+        renderQueue();
+        vrLoadCounts();
+      } catch (e) {
+        document.getElementById('vrQueue').innerHTML = `
+          <div class="vr-empty">
+            <strong>Couldn't load the queue.</strong>
+            <p>${esc(e.message)} — is the backend running? Once /api/quotes responds you can come back and refresh.</p>
+          </div>`;
+      }
+    }
+
+    // Separate counts call so the tab badges always reflect the full state,
+    // not just the currently active filter.
+    async function vrLoadCounts() {
+      const statuses = ['pending_review', 'confirmed', 'rejected'];
+      await Promise.all(statuses.map(async s => {
+        try {
+          const res = await fetch(`/api/quotes?volume_status=${s}&limit=1`, { headers: authHeaders() });
+          if (!res.ok) return;
+          const j = await res.json();
+          state.counts[s] = j.total || 0;
+          const el = document.getElementById(`vrCount-${s}`);
+          if (el) el.textContent = state.counts[s];
+        } catch (_) { /* leave previous */ }
+      }));
+    }
+
+    // ----- render -----
+    function renderQueue() {
+      const host = document.getElementById('vrQueue');
+      if (!state.quotes.length) {
+        const empty = {
+          pending_review: ['Inbox zero.', 'No quotes are waiting for a paint-volume sign-off right now.'],
+          confirmed:      ['Nothing confirmed yet.', 'Confirmed quotes show up here for the audit trail.'],
+          rejected:       ['No rejections.', 'Rejected quotes show up here so they can be reworked.'],
+        }[state.tab] || ['Nothing here.', ''];
+        host.innerHTML = `<div class="vr-empty"><strong>${esc(empty[0])}</strong><p>${esc(empty[1])}</p></div>`;
+        return;
+      }
+      host.innerHTML = state.quotes.map(renderQuoteCard).join('');
+    }
+
+    function renderQuoteCard(q) {
+      const lines  = Array.isArray(q.paint_lines) ? q.paint_lines : [];
+      const totals = lines.reduce((a, l) => ({
+        litres:  a.litres  + (Number(l.litres_needed)  || 0),
+        buckets: a.buckets + (Number(l.buckets_needed) || 0),
+        cost:    a.cost    + (Number(l.cost_estimate)  || 0),
+      }), { litres: 0, buckets: 0, cost: 0 });
+
+      const linesHtml = lines.length ? `
+        <table>
+          <thead>
+            <tr>
+              <th>Paint product</th>
+              <th class="num">Area</th>
+              <th class="num">Coats</th>
+              <th class="num">Coverage</th>
+              <th class="num">Litres</th>
+              <th class="num">Buckets</th>
+              <th class="num">Cost</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${lines.map(l => `
+              <tr>
+                <td><strong>${esc(l.product_name || ('#' + l.paint_product_id))}</strong>
+                    <div class="small" style="color:var(--ink-500);">${esc(l.product_type || '')}</div></td>
+                <td class="num">${Number(l.surface_area_sqm).toFixed(1)} m²</td>
+                <td class="num">${l.coats}</td>
+                <td class="num">${l.coverage_m2_per_litre} m²/L</td>
+                <td class="num">${Number(l.litres_needed).toFixed(2)} L</td>
+                <td class="num">${l.buckets_needed} × ${l.bucket_size_litres} L</td>
+                <td class="num">${fmtGHS(l.cost_estimate)}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+          <tfoot>
+            <tr>
+              <td colspan="4">Total</td>
+              <td class="num">${totals.litres.toFixed(2)} L</td>
+              <td class="num">${totals.buckets}</td>
+              <td class="num">${fmtGHS(totals.cost)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      ` : `
+        <div class="vr-empty" style="padding:20px 0;">
+          <p>No paint lines on this quote yet — nothing to confirm.</p>
+        </div>`;
+
+      const actions = state.tab === 'pending_review' ? `
+        <div class="vr-actions">
+          <input class="reason" type="text" placeholder="Reason if rejecting (optional)" data-vr-reason="${esc(q.id)}" />
+          <button class="btn btn-outline"  onclick="vrReject('${esc(q.id)}')">Reject</button>
+          <button class="btn btn-primary"  onclick="vrConfirm('${esc(q.id)}')" ${lines.length ? '' : 'disabled'}>
+            Confirm volume
+          </button>
+        </div>
+      ` : '';
+
+      return `
+        <article class="vr-quote-card" data-quote-id="${esc(q.id)}">
+          <div class="vr-quote-head">
+            <div>
+              <span class="id">${esc(q.id)}</span>
+              <h3>${esc(q.service)} · ${Number(q.area_sqm).toFixed(0)} m² · ${q.duration_days} day${q.duration_days === 1 ? '' : 's'}</h3>
+              <div class="vr-quote-meta">
+                <span>Total <strong>${fmtGHS(q.total)}</strong></span>
+                ${q.city ? `<span>${esc(q.city)}</span>` : ''}
+                <span>Submitted ${fmtDate(q.created_at)}</span>
+                ${q.volume_confirmed_at ? `<span>Reviewed ${fmtDate(q.volume_confirmed_at)}</span>` : ''}
+              </div>
+            </div>
+            <span class="vr-status-badge vr-status-${esc(q.volume_status)}">${esc((q.volume_status || '').replace('_', ' '))}</span>
+          </div>
+          <div class="vr-lines">${linesHtml}</div>
+          ${actions}
+        </article>`;
+    }
+
+    // ----- actions -----
+    async function vrConfirm(quoteId) {
+      try {
+        const res = await fetch(`/api/paint-volume/quotes/${encodeURIComponent(quoteId)}/confirm`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        });
+        const j = await res.json();
+        if (!res.ok) throw new Error(j.message || `HTTP ${res.status}`);
+        if (typeof pmToast === 'function') pmToast(`Quote ${quoteId} confirmed.`, 'success');
+        vrLoadQueue();
+      } catch (e) {
+        if (typeof pmToast === 'function') pmToast(e.message, 'error');
+        else alert('Confirm failed: ' + e.message);
+      }
+    }
+
+    async function vrReject(quoteId) {
+      const reasonInput = document.querySelector(`[data-vr-reason="${quoteId}"]`);
+      const reason = reasonInput ? reasonInput.value.trim() : '';
+      try {
+        const res = await fetch(`/api/paint-volume/quotes/${encodeURIComponent(quoteId)}/reject`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...authHeaders() },
+          body: JSON.stringify({ reason }),
+        });
+        const j = await res.json();
+        if (!res.ok) throw new Error(j.message || `HTTP ${res.status}`);
+        if (typeof pmToast === 'function') pmToast(`Quote ${quoteId} rejected.`, 'success');
+        vrLoadQueue();
+      } catch (e) {
+        if (typeof pmToast === 'function') pmToast(e.message, 'error');
+        else alert('Reject failed: ' + e.message);
+      }
+    }
+
+    // ----- tab switching -----
+    document.getElementById('vrTabs').addEventListener('click', (e) => {
+      const btn = e.target.closest('.vr-status-tab'); if (!btn) return;
+      document.querySelectorAll('.vr-status-tab').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      state.tab = btn.dataset.status;
+      vrLoadQueue();
+    });
+
+    // ----- init -----
+    vrLoadQueue();
+  </script>
+</body>
+</html>

@@ -1,0 +1,636 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" type="image/png" href="../assets/img/favicon.png" />
+  <title>Customers — Paint Masters Dispatcher</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/admin.css" />
+</head>
+<body>
+  <div class="admin-shell">
+    <div id="admin-sidebar"></div>
+    <div class="admin-main">
+      <div id="admin-topbar"></div>
+      <div class="main">
+
+        <div class="page-head">
+          <div>
+            <h1>Customers</h1>
+            <div class="sub">360° view of every customer — bookings, lifetime value, notes, communication.</div>
+          </div>
+          <div class="page-actions">
+            <button class="btn btn-outline" onclick="exportCustomers()">⬇ Export</button>
+            <button class="btn btn-primary" onclick="openAddCustomer()">＋ Add Customer</button>
+          </div>
+        </div>
+
+        <!-- KPI strip -->
+        <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);" id="custKpis"></div>
+
+        <!-- Filters -->
+        <div class="filterbar mt-24">
+          <input type="search" id="cSearch" placeholder="Search by name, phone, email, city..." />
+          <select class="sel" id="cType">
+            <option value="">All types</option>
+            <option>Homeowner</option><option>Property Manager</option><option>SMB Owner</option>
+          </select>
+          <select class="sel" id="cSort">
+            <option value="ltv">Sort: LTV (high → low)</option>
+            <option value="recent">Sort: Most recent job</option>
+            <option value="jobs">Sort: Most jobs</option>
+            <option value="alpha">Sort: A → Z</option>
+          </select>
+          <span class="small" style="margin-left:auto;" id="cCount"></span>
+        </div>
+
+        <div class="cust-layout">
+          <!-- LEFT: list -->
+          <div class="panel" style="max-height:75vh;overflow-y:auto;">
+            <ul id="custList" style="list-style:none;margin:0;padding:0;"></ul>
+          </div>
+
+          <!-- RIGHT: detail -->
+          <div id="custDetail"></div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- Shared modal host for Add Customer + Message Customer flows. -->
+  <div id="custModal" class="hidden"></div>
+
+  <script src="../assets/shared.js"></script>
+  <script src="assets/admin-shared.js"></script>
+  <script>
+    adminMount('customers');
+
+    const f = { search:'', type:'', sort:'ltv' };
+    // Deep-link: ?id=<customerId> from the topbar search auto-selects.
+    let activeId = (() => {
+      try { return new URLSearchParams(location.search).get('id') || null; }
+      catch (e) { return null; }
+    })();
+
+    function render() {
+      const s = getStore();
+
+      // KPI strip
+      const totalLTV = s.customers.reduce((a,c)=>a+c.ltv,0);
+      const repeatRate = Math.round(100 * s.customers.filter(c => c.jobs > 1).length / s.customers.length);
+      const avgRating  = (s.customers.filter(c=>c.rating).reduce((a,c)=>a+c.rating,0) / s.customers.filter(c=>c.rating).length).toFixed(2);
+      document.getElementById('custKpis').innerHTML = `
+        <div class="kpi"><div class="label">Total customers</div><div class="value">${s.customers.length}</div><div class="trend up">▲ +4 this month</div></div>
+        <div class="kpi"><div class="label">Total LTV</div><div class="value">${fmtGHS(totalLTV)}</div><div class="trend up">▲ +12% MoM</div></div>
+        <div class="kpi"><div class="label">Repeat-customer rate</div><div class="value">${repeatRate}%</div><div class="trend up">▲ +6pp</div></div>
+        <div class="kpi"><div class="label">Avg satisfaction</div><div class="value">★ ${avgRating}</div><div class="trend up">▲ +0.1</div></div>
+      `;
+
+      // Filter & sort
+      let rows = s.customers.filter(c => {
+        if (f.search) { const q=f.search.toLowerCase(); if (!(c.name+' '+c.phone+' '+c.email+' '+c.city).toLowerCase().includes(q)) return false; }
+        if (f.type && c.type !== f.type) return false;
+        return true;
+      });
+      const sorters = {
+        ltv:    (a,b) => b.ltv - a.ltv,
+        recent: (a,b) => new Date(b.lastJob) - new Date(a.lastJob),
+        jobs:   (a,b) => b.jobs - a.jobs,
+        alpha:  (a,b) => a.name.localeCompare(b.name)
+      };
+      rows.sort(sorters[f.sort]);
+      document.getElementById('cCount').textContent = `${rows.length} customers`;
+
+      document.getElementById('custList').innerHTML = rows.map(c => `
+        <li class="cust-row" data-id="${c.id}" onclick="selectCustomer('${c.id}')"
+            style="display:flex;gap:12px;padding:14px 18px;border-bottom:1px solid var(--ink-100);cursor:pointer;${activeId===c.id?'background:rgba(245,184,0,0.08);border-left:3px solid var(--gold-500);padding-left:15px;':''}">
+          <div class="avatar" style="width:40px;height:40px;flex-shrink:0;">${initials(c.name)}</div>
+          <div style="flex:1;min-width:0;">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <strong>${c.name}</strong>
+              <span class="amt small" style="color:var(--navy-900);font-weight:700;">${fmtGHS(c.ltv)}</span>
+            </div>
+            <div class="small" style="display:flex;gap:8px;align-items:center;">
+              <span>${c.type}</span> · <span>${c.city}</span> · <span>${c.jobs} job${c.jobs===1?'':'s'}</span>
+              ${c.rating ? `<span style="color:var(--gold-500);">★ ${c.rating}</span>` : ''}
+            </div>
+          </div>
+        </li>
+      `).join('') || '<li style="padding:20px;color:var(--ink-500);">No customers match.</li>';
+
+      if (!activeId && rows.length) activeId = rows[0].id;
+      renderDetail();
+    }
+
+    function initials(name) {
+      return name.split(/\s+/).slice(0,2).map(w => w[0]).join('').toUpperCase();
+    }
+
+    function selectCustomer(id) {
+      activeId = id;
+      // Update active styling cheaply without full re-render
+      document.querySelectorAll('.cust-row').forEach(el => {
+        const isActive = el.dataset.id === id;
+        el.style.background = isActive ? 'rgba(245,184,0,0.08)' : '';
+        el.style.borderLeft = isActive ? '3px solid var(--gold-500)' : '';
+        el.style.paddingLeft = isActive ? '15px' : '18px';
+      });
+      renderDetail();
+    }
+
+    function renderDetail() {
+      const s = getStore();
+      const c = s.customers.find(x => x.id === activeId);
+      const host = document.getElementById('custDetail');
+      if (!c) { host.innerHTML = '<div class="panel"><div class="panel-body small">No customer selected.</div></div>'; return; }
+
+      // Match jobs by customer name (loose; in real system would be FK)
+      const jobs = s.jobs.filter(j => j.customer.toLowerCase().includes(c.name.toLowerCase().split(' ')[0]));
+      const upcoming = jobs.filter(j => ['scheduled','dispatched','on_site','qa'].includes(j.stage));
+      const past = jobs.filter(j => j.stage === 'completed');
+
+      host.innerHTML = `
+        <div class="panel">
+          <div class="panel-head" style="background:linear-gradient(135deg,var(--navy-900),var(--navy-700));color:#fff;border:0;">
+            <div style="display:flex;gap:14px;align-items:center;">
+              <div class="avatar" style="width:56px;height:56px;font-size:1.1rem;">${initials(c.name)}</div>
+              <div>
+                <h3 style="color:#fff;margin:0;">${c.name}</h3>
+                <div class="small" style="color:rgba(255,255,255,0.75);">${c.type} · ${c.city}</div>
+              </div>
+            </div>
+            <div style="display:flex;gap:8px;">
+              <button class="btn" style="background:rgba(255,255,255,0.1);color:#fff;border:1px solid rgba(255,255,255,0.2);" onclick="openEditCustomer('${c.id}')">✎ Edit</button>
+              <button class="btn btn-gold" onclick="newBookingFor('${c.id}')">＋ New booking</button>
+              <button class="btn" style="background:rgba(255,255,255,0.1);color:#fff;border:1px solid rgba(255,255,255,0.2);" onclick="openMessageCustomer('${c.id}')">💬 Message</button>
+            </div>
+          </div>
+          <div class="panel-body">
+            <!-- Stat strip -->
+            <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);">
+              <div class="kpi"><div class="label">Lifetime value</div><div class="value">${fmtGHS(c.ltv)}</div></div>
+              <div class="kpi"><div class="label">Total jobs</div><div class="value">${c.jobs}</div></div>
+              <div class="kpi"><div class="label">Avg rating given</div><div class="value">${c.rating?'★ '+c.rating:'—'}</div></div>
+              <div class="kpi"><div class="label">Last job</div><div class="value" style="font-size:1rem;">${fmtShort(c.lastJob)}</div></div>
+            </div>
+
+            <div class="row mt-24">
+              <div>
+                <div class="small">Phone</div>
+                <strong>${c.phone}</strong>
+              </div>
+              <div>
+                <div class="small">Email</div>
+                <strong>${c.email}</strong>
+              </div>
+            </div>
+
+            <!-- Tabs -->
+            <div class="tabs mt-24">
+              <button class="active" data-tab="history">Job history (${jobs.length})</button>
+              <button data-tab="notes">Notes</button>
+              <button data-tab="prefs">Preferences</button>
+              <button data-tab="docs">Documents</button>
+            </div>
+
+            <div data-tab-panel="history">
+              ${ upcoming.length ? `
+                <h4 style="font-size:0.92rem;color:var(--navy-900);margin:0 0 8px;">Upcoming · ${upcoming.length}</h4>
+                <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:18px;">
+                  ${upcoming.map(j => jobRow(j)).join('')}
+                </div>
+              ` : '' }
+
+              ${ past.length ? `
+                <h4 style="font-size:0.92rem;color:var(--navy-900);margin:0 0 8px;">Past · ${past.length}</h4>
+                <div style="display:flex;flex-direction:column;gap:8px;">
+                  ${past.map(j => jobRow(j)).join('')}
+                </div>
+              ` : (jobs.length === 0 ? '<p class="small">No jobs on file yet.</p>' : '')}
+            </div>
+
+            <div data-tab-panel="notes" class="hidden">
+              <p class="small">Internal notes about this customer (visible to dispatchers only).</p>
+              <textarea class="textarea" rows="5" placeholder="Add a note...">${ c.type==='Property Manager' ? 'Bulk-job customer. Prefers morning bookings. Always pays via bank transfer. Has a corporate discount agreement.' : c.type==='SMB Owner' ? 'Brand-conscious. Insists on premium paint and exact colour matches. Reachable on WhatsApp.' : 'Friendly homeowner. Has two dogs, both safe. Prefers afternoon time slots.' }</textarea>
+              <button class="btn btn-primary mt-16" onclick="toast('Note saved.')">Save note</button>
+            </div>
+
+            <div data-tab-panel="prefs" class="hidden">
+              <ul style="list-style:none;padding:0;display:grid;gap:8px;color:var(--ink-700);">
+                <li>🎨 Preferred brand: <strong>${c.type==='SMB Owner'?'Dulux':'Leyland'}</strong></li>
+                <li>🕐 Preferred window: <strong>${c.type==='Property Manager'?'Morning':'Flexible'}</strong></li>
+                <li>💳 Payment method: <strong>${c.type==='Property Manager'?'Bank transfer (NET-7)':'MTN MoMo'}</strong></li>
+                <li>🌐 Language: <strong>English</strong></li>
+                <li>📩 Comms preference: <strong>WhatsApp + Email</strong></li>
+              </ul>
+            </div>
+
+            <div data-tab-panel="docs" class="hidden">
+              <p class="small">Signed contracts and warranty certificates.</p>
+              <div style="display:flex;flex-direction:column;gap:8px;">
+                <div class="job-card"><strong>📄 Service Contract — PM-${480000+Math.abs(c.id.charCodeAt(0)*100)}.pdf</strong><div class="small">Signed ${fmtShort(c.lastJob)}</div></div>
+                <div class="job-card"><strong>🛡️ Warranty Certificate — 12-mo from ${fmtShort(c.lastJob)}</strong><div class="small">Active</div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+
+      // Tab wiring
+      host.querySelectorAll('.tabs button').forEach(btn => {
+        btn.addEventListener('click', () => {
+          host.querySelectorAll('.tabs button').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          host.querySelectorAll('[data-tab-panel]').forEach(p => p.classList.toggle('hidden', p.dataset.tabPanel !== btn.dataset.tab));
+        });
+      });
+    }
+
+    function jobRow(j) {
+      const a = artisanById(j.assignedTo);
+      return `
+        <div class="job-card" onclick="location.href='jobs.html#${j.id}'" style="cursor:pointer;">
+          <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;">
+            <div>
+              <div class="ref">${j.ref}</div>
+              <h4>${j.service}</h4>
+              <div class="meta">${fmtShort(j.date)}${j.endDate && j.endDate !== j.date ? ' → ' + fmtShort(j.endDate) : ''} · ${a?a.name:'<em>unassigned</em>'}</div>
+            </div>
+            <div style="text-align:right;">
+              <span class="st ${STAGE_BADGE[j.stage]}">${STAGE_LABEL[j.stage]}</span>
+              <div class="amt mt-8">${fmtGHS(j.amount)}</div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    ['cSearch','cType','cSort'].forEach(id => {
+      document.getElementById(id).addEventListener('input', e => {
+        const k = id.replace('c','').toLowerCase();
+        f[k] = e.target.value;
+        render();
+      });
+    });
+
+    // ─────────────────────────────────────────────
+    // Top action 1: Export — CSV download of CURRENTLY-FILTERED customers.
+    // Honours the search + type filter so the dispatcher can export a slice
+    // (e.g. just SMB owners in Accra) rather than always the whole roster.
+    // ─────────────────────────────────────────────
+    function exportCustomers() {
+      const s = getStore();
+      const rows = s.customers.filter(c => {
+        if (f.search) { const q = f.search.toLowerCase(); if (!(c.name+' '+c.phone+' '+c.email+' '+c.city).toLowerCase().includes(q)) return false; }
+        if (f.type && c.type !== f.type) return false;
+        return true;
+      });
+      const header = ['name','type','phone','email','city','jobs','ltv','last_job','rating'];
+      const csv = [header.join(',')].concat(rows.map(c => [
+        c.name, c.type, c.phone, c.email, c.city, c.jobs, c.ltv, c.lastJob, (c.rating ?? '')
+      ].map(v => `"${String(v ?? '').replace(/"/g,'""')}"`).join(','))).join('\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href = url; a.download = `paintmasters-customers-${new Date().toISOString().slice(0,10)}.csv`;
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+      toast(`Exported ${rows.length} customer${rows.length===1?'':'s'}`);
+      if (typeof pmActivity !== 'undefined') {
+        pmActivity.emit({ kind:'system', title:`Exported ${rows.length} customers`, sub:'CSV download', source:{ role:'admin', name: (typeof pmAuth!=='undefined' && pmAuth.user()?.name) || 'Admin' } });
+      }
+    }
+
+    // ─────────────────────────────────────────────
+    // Top action 2: Add Customer — modal collecting the minimum needed for
+    // a customer record. Mutates the store (so the new row appears straight
+    // away in the list) and best-effort POSTs through to /api/customers
+    // for the backend to pick up when it ships.
+    // ─────────────────────────────────────────────
+    function openAddCustomer() {
+      const host = document.getElementById('custModal');
+      host.classList.remove('hidden');
+      const cityOpts = pmRegions.list().map(r => `<option>${r.name}</option>`).join('');
+      host.innerHTML = `
+        <div class="modal-backdrop" onclick="if(event.target===this)closeCustModal()">
+          <div class="modal" style="max-width:520px;">
+            <div class="modal-head">
+              <div>
+                <h3 style="margin:0;">Add a customer</h3>
+                <div class="small" style="color:var(--ink-500);">They appear in this list immediately. New booking and Message both work straight away.</div>
+              </div>
+              <div class="close-btn" onclick="closeCustModal()">✕</div>
+            </div>
+            <div class="modal-body">
+              <div style="display:grid;gap:14px;">
+                <div>
+                  <label style="display:block;font-size:0.82rem;font-weight:600;color:var(--ink-700);margin-bottom:4px;">Full name <span style="color:var(--red);">*</span></label>
+                  <input id="acName" type="text" placeholder="e.g. Yaa Adjei" style="width:100%;padding:10px 12px;border:1.5px solid var(--ink-300);border-radius:9px;font-size:0.94rem;font-family:inherit;" />
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                  <div>
+                    <label style="display:block;font-size:0.82rem;font-weight:600;color:var(--ink-700);margin-bottom:4px;">Phone <span style="color:var(--red);">*</span></label>
+                    <input id="acPhone" type="tel" placeholder="0244 000 000" style="width:100%;padding:10px 12px;border:1.5px solid var(--ink-300);border-radius:9px;font-size:0.94rem;font-family:inherit;" />
+                  </div>
+                  <div>
+                    <label style="display:block;font-size:0.82rem;font-weight:600;color:var(--ink-700);margin-bottom:4px;">Type</label>
+                    <select id="acType" style="width:100%;padding:10px 12px;border:1.5px solid var(--ink-300);border-radius:9px;font-size:0.94rem;font-family:inherit;background:#fff;">
+                      <option>Homeowner</option><option>Property Manager</option><option>SMB Owner</option>
+                    </select>
+                  </div>
+                </div>
+                <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:12px;">
+                  <div>
+                    <label style="display:block;font-size:0.82rem;font-weight:600;color:var(--ink-700);margin-bottom:4px;">Email</label>
+                    <input id="acEmail" type="email" placeholder="optional" style="width:100%;padding:10px 12px;border:1.5px solid var(--ink-300);border-radius:9px;font-size:0.94rem;font-family:inherit;" />
+                  </div>
+                  <div>
+                    <label style="display:block;font-size:0.82rem;font-weight:600;color:var(--ink-700);margin-bottom:4px;">City</label>
+                    <select id="acCity" style="width:100%;padding:10px 12px;border:1.5px solid var(--ink-300);border-radius:9px;font-size:0.94rem;font-family:inherit;background:#fff;">${cityOpts}</select>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="modal-foot" style="display:flex;gap:10px;justify-content:flex-end;padding:16px 20px;border-top:1px solid var(--ink-100);">
+              <button class="btn btn-outline" onclick="closeCustModal()">Cancel</button>
+              <button class="btn btn-primary" onclick="submitAddCustomer()">Add customer</button>
+            </div>
+          </div>
+        </div>`;
+      setTimeout(() => document.getElementById('acName').focus(), 30);
+    }
+    function closeCustModal() {
+      const h = document.getElementById('custModal');
+      h.classList.add('hidden'); h.innerHTML = '';
+    }
+    function submitAddCustomer() {
+      const name  = document.getElementById('acName').value.trim();
+      const phone = document.getElementById('acPhone').value.trim();
+      if (!name)  { toast('Name is required.', 'warn'); return; }
+      if (!phone) { toast('Phone is required.', 'warn'); return; }
+      const type  = document.getElementById('acType').value;
+      const email = document.getElementById('acEmail').value.trim();
+      const city  = document.getElementById('acCity').value;
+      const newCustomer = {
+        id: 'c' + Math.random().toString(36).slice(2, 8),
+        name, type, phone, email, city,
+        jobs: 0, ltv: 0, lastJob: new Date().toISOString().slice(0,10), rating: null
+      };
+      mutate(store => { store.customers.unshift(newCustomer); });
+      // Best-effort POST when the backend route exists.
+      try {
+        fetch('/api/admin/customers', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (pmAuth.token() || '') },
+          body: JSON.stringify(newCustomer)
+        }).catch(() => { /* offline */ });
+      } catch (e) { /* silent */ }
+      // Surface to the activity bus so dispatchers in other tabs see it.
+      if (typeof pmActivity !== 'undefined') {
+        pmActivity.emit({
+          kind: 'system', title: `New customer added: ${name}`, sub: `${type} · ${city} · ${phone}`,
+          source: { role: 'admin', name: (typeof pmAuth!=='undefined' && pmAuth.user()?.name) || 'Admin' }
+        });
+      }
+      closeCustModal();
+      activeId = newCustomer.id;
+      toast(`${name} added`);
+      render();
+    }
+
+    // ─────────────────────────────────────────────
+    // Per-row action 1: New booking — pre-fill the customer-side booking
+    // flow with this customer's name and phone so the dispatcher only has
+    // to fill in service / date / address.
+    // ─────────────────────────────────────────────
+    function newBookingFor(id) {
+      const c = getStore().customers.find(x => x.id === id);
+      if (!c) return;
+      const params = new URLSearchParams({
+        customer: c.id,
+        name:     c.name,
+        phone:    c.phone,
+        email:    c.email || '',
+        city:     c.city || ''
+      });
+      // booking.html sits at the project root; admin pages live one folder deeper.
+      location.href = `../booking.html?${params.toString()}`;
+    }
+
+    // ─────────────────────────────────────────────
+    // Per-row action 2: Message — channel-aware composer (SMS / WhatsApp /
+    // In-platform). Uses the same pmComms helper as the painter modal so
+    // SMS opens sms:phone?body=..., WhatsApp opens wa.me/<digits>?text=...,
+    // and in-platform best-effort POSTs to /api/admin/customers/:id/messages.
+    // ─────────────────────────────────────────────
+    function openMessageCustomer(id) {
+      const c = getStore().customers.find(x => x.id === id); if (!c) return;
+      const host = document.getElementById('custModal');
+      host.classList.remove('hidden');
+      host.innerHTML = `
+        <div class="modal-backdrop" onclick="if(event.target===this)closeCustModal()">
+          <div class="modal" style="max-width:520px;">
+            <div class="modal-head">
+              <div style="display:flex;align-items:center;gap:12px;">
+                <div class="avatar" style="width:44px;height:44px;background:var(--navy-700);font-size:0.9rem;">${initials(c.name)}</div>
+                <div>
+                  <h3 style="margin:0;">Message ${c.name.split(' ')[0]}</h3>
+                  <div class="small">${c.city} · ${c.phone}</div>
+                </div>
+              </div>
+              <div class="close-btn" onclick="closeCustModal()">✕</div>
+            </div>
+            <div class="modal-body">
+              <div style="display:grid;gap:14px;">
+                <div>
+                  <label style="display:block;font-size:0.82rem;font-weight:600;color:var(--ink-700);margin-bottom:6px;">Send via <span style="color:var(--red);">*</span></label>
+                  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;" id="cmChan">
+                    <label style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:1.5px solid var(--ink-300);border-radius:9px;cursor:pointer;font-size:0.86rem;font-weight:500;">
+                      <input type="radio" name="cmCh" value="sms" checked /> 📱 SMS
+                    </label>
+                    <label style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:1.5px solid var(--ink-300);border-radius:9px;cursor:pointer;font-size:0.86rem;font-weight:500;">
+                      <input type="radio" name="cmCh" value="whatsapp" /> 🟢 WhatsApp
+                    </label>
+                    <label style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:1.5px solid var(--ink-300);border-radius:9px;cursor:pointer;font-size:0.86rem;font-weight:500;">
+                      <input type="radio" name="cmCh" value="platform" /> 💬 In-platform
+                    </label>
+                  </div>
+                </div>
+                <div>
+                  <label style="display:block;font-size:0.82rem;font-weight:600;color:var(--ink-700);margin-bottom:4px;">Message <span style="color:var(--red);">*</span></label>
+                  <textarea id="cmBody" rows="5" placeholder="Hi ${c.name.split(' ')[0]} — just checking in about your upcoming job..." style="width:100%;padding:10px 12px;border:1.5px solid var(--ink-300);border-radius:9px;font-size:0.94rem;font-family:inherit;resize:vertical;"></textarea>
+                  <div class="small" id="cmCounter" style="color:var(--ink-500);margin-top:4px;">0 characters · 0 SMS pages</div>
+                </div>
+              </div>
+            </div>
+            <div class="modal-foot" style="display:flex;gap:10px;justify-content:flex-end;padding:16px 20px;border-top:1px solid var(--ink-100);">
+              <button class="btn btn-outline" onclick="closeCustModal()">Cancel</button>
+              <button class="btn btn-primary" id="cmSendBtn" onclick="submitCustomerMessage('${c.id}')">Send</button>
+            </div>
+          </div>
+        </div>`;
+      document.getElementById('cmBody').addEventListener('input', e => {
+        const len = e.target.value.length;
+        const pages = len === 0 ? 0 : Math.ceil(len / 160);
+        document.getElementById('cmCounter').textContent = `${len} character${len===1?'':'s'} · ${pages} SMS page${pages===1?'':'s'}`;
+      });
+      setTimeout(() => document.getElementById('cmBody').focus(), 30);
+    }
+    async function submitCustomerMessage(id) {
+      const c = getStore().customers.find(x => x.id === id); if (!c) return;
+      const body = document.getElementById('cmBody').value.trim();
+      if (!body) { toast('Type a message first.'); return; }
+      const channel = document.querySelector('input[name="cmCh"]:checked').value;
+      const to = c.phone;
+      if ((channel === 'sms' || channel === 'whatsapp') && !to) {
+        toast(`No phone on file for ${c.name}.`); return;
+      }
+      const btn = document.getElementById('cmSendBtn');
+      btn.disabled = true; btn.textContent = 'Sending...';
+      const res = await pmComms.send({
+        channel, to, body,
+        threadKey: 'customer:' + c.id,
+        platformPath: '/api/admin/customers/' + c.id + '/messages',
+      });
+      if (res.ok) {
+        if (typeof pmActivity !== 'undefined') {
+          pmActivity.emit({
+            kind: 'message',
+            title: `Sent ${({sms:'SMS',whatsapp:'WhatsApp',platform:'in-platform'})[channel]||channel} to ${c.name}`,
+            sub: body.slice(0, 100),
+            source: { role: 'admin', name: (typeof pmAuth!=='undefined' && pmAuth.user()?.name) || 'Admin' }
+          });
+        }
+        toast(res.receipt || 'Sent');
+        closeCustModal();
+      } else {
+        btn.disabled = false; btn.textContent = 'Send';
+        toast(res.error || 'Could not send');
+      }
+    }
+
+    // ─────────────────────────────────────────────
+    // Edit a customer — modal that lets the dispatcher correct typos and
+    // update contact info on an existing record. Uses the same modal host
+    // as Add Customer, so opening Edit replaces any open composer.
+    // ─────────────────────────────────────────────
+    function openEditCustomer(id) {
+      const c = getStore().customers.find(x => x.id === id); if (!c) return;
+      const cityOpts = pmRegions.list().map(r =>
+        `<option ${r.name === c.city ? 'selected' : ''}>${r.name}</option>`).join('');
+      const typeOpts = ['Homeowner','Property Manager','SMB Owner']
+        .map(t => `<option ${t === c.type ? 'selected' : ''}>${t}</option>`).join('');
+      const host = document.getElementById('custModal');
+      host.classList.remove('hidden');
+      host.innerHTML = `
+        <div class="modal-backdrop" onclick="if(event.target===this)closeCustModal()">
+          <div class="modal" style="max-width:520px;">
+            <div class="modal-head">
+              <div>
+                <h3 style="margin:0;">Edit ${c.name.split(' ')[0]}</h3>
+                <div class="small" style="color:var(--ink-500);">Changes apply immediately. ${c.id}</div>
+              </div>
+              <div class="close-btn" onclick="closeCustModal()">✕</div>
+            </div>
+            <div class="modal-body">
+              <div style="display:grid;gap:14px;">
+                <div>
+                  <label style="display:block;font-size:0.82rem;font-weight:600;color:var(--ink-700);margin-bottom:4px;">Full name <span style="color:var(--red);">*</span></label>
+                  <input id="ecName" type="text" value="${(c.name || '').replace(/"/g,'&quot;')}" style="width:100%;padding:10px 12px;border:1.5px solid var(--ink-300);border-radius:9px;font-size:0.94rem;font-family:inherit;" />
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                  <div>
+                    <label style="display:block;font-size:0.82rem;font-weight:600;color:var(--ink-700);margin-bottom:4px;">Phone <span style="color:var(--red);">*</span></label>
+                    <input id="ecPhone" type="tel" value="${(c.phone || '').replace(/"/g,'&quot;')}" style="width:100%;padding:10px 12px;border:1.5px solid var(--ink-300);border-radius:9px;font-size:0.94rem;font-family:inherit;" />
+                  </div>
+                  <div>
+                    <label style="display:block;font-size:0.82rem;font-weight:600;color:var(--ink-700);margin-bottom:4px;">Type</label>
+                    <select id="ecType" style="width:100%;padding:10px 12px;border:1.5px solid var(--ink-300);border-radius:9px;font-size:0.94rem;font-family:inherit;background:#fff;">${typeOpts}</select>
+                  </div>
+                </div>
+                <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:12px;">
+                  <div>
+                    <label style="display:block;font-size:0.82rem;font-weight:600;color:var(--ink-700);margin-bottom:4px;">Email</label>
+                    <input id="ecEmail" type="email" value="${(c.email || '').replace(/"/g,'&quot;')}" placeholder="optional" style="width:100%;padding:10px 12px;border:1.5px solid var(--ink-300);border-radius:9px;font-size:0.94rem;font-family:inherit;" />
+                  </div>
+                  <div>
+                    <label style="display:block;font-size:0.82rem;font-weight:600;color:var(--ink-700);margin-bottom:4px;">City</label>
+                    <select id="ecCity" style="width:100%;padding:10px 12px;border:1.5px solid var(--ink-300);border-radius:9px;font-size:0.94rem;font-family:inherit;background:#fff;">${cityOpts}</select>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="modal-foot" style="display:flex;gap:10px;justify-content:space-between;padding:16px 20px;border-top:1px solid var(--ink-100);">
+              <button class="btn" style="background:#FEE2E2;color:#991B1B;border:1px solid #FCA5A5;" onclick="confirmDeleteCustomer('${c.id}')">🗑 Delete customer</button>
+              <div style="display:flex;gap:8px;">
+                <button class="btn btn-outline" onclick="closeCustModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="submitEditCustomer('${c.id}')">Save changes</button>
+              </div>
+            </div>
+          </div>
+        </div>`;
+      setTimeout(() => document.getElementById('ecName').focus(), 30);
+    }
+
+    function submitEditCustomer(id) {
+      const name  = document.getElementById('ecName').value.trim();
+      const phone = document.getElementById('ecPhone').value.trim();
+      if (!name)  { toast('Name is required.', 'warn'); return; }
+      if (!phone) { toast('Phone is required.', 'warn'); return; }
+      const type  = document.getElementById('ecType').value;
+      const email = document.getElementById('ecEmail').value.trim();
+      const city  = document.getElementById('ecCity').value;
+      mutate(store => {
+        const row = store.customers.find(x => x.id === id); if (!row) return;
+        row.name = name; row.phone = phone; row.type = type;
+        row.email = email; row.city = city;
+      });
+      try {
+        fetch('/api/admin/customers/' + id, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (pmAuth.token() || '') },
+          body: JSON.stringify({ name, phone, email, type, city })
+        }).catch(() => {});
+      } catch (e) {}
+      if (typeof pmActivity !== 'undefined') {
+        pmActivity.emit({
+          kind: 'system', title: `Customer updated: ${name}`,
+          sub: `${type} · ${city} · ${phone}`,
+          source: { role: 'admin', name: (typeof pmAuth !== 'undefined' && pmAuth.user()?.name) || 'Admin' }
+        });
+      }
+      closeCustModal();
+      toast(`${name} updated`);
+      render();
+    }
+
+    // Delete a customer record (linked jobs are unaffected). Typed-confirm.
+    function confirmDeleteCustomer(id) {
+      const c = getStore().customers.find(x => x.id === id); if (!c) return;
+      const ans = prompt(`Permanently delete ${c.name}?\n\nLinked job history stays in the system; only the customer record is removed.\n\nType "${c.name}" to confirm:`);
+      if (String(ans || '').trim() !== c.name) { toast('Cancelled.'); return; }
+      mutate(store => {
+        const i = store.customers.findIndex(x => x.id === id);
+        if (i >= 0) store.customers.splice(i, 1);
+      });
+      if (typeof pmActivity !== 'undefined') {
+        pmActivity.emit({
+          kind: 'system', severity: 'warn',
+          title: `Customer deleted: ${c.name}`,
+          source: { role: 'admin', name: (typeof pmAuth !== 'undefined' && pmAuth.user()?.name) || 'Admin' }
+        });
+      }
+      activeId = null;
+      closeCustModal();
+      toast(`${c.name} deleted.`);
+      render();
+    }
+
+    render();
+  </script>
+</body>
+</html>

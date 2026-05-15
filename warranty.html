@@ -1,0 +1,374 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" type="image/png" href="assets/img/favicon.png" />
+  <title>Warranty certificate — Paint Masters</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/styles.css" />
+  <style>
+    /* The cert is laid out for A4 portrait. The .cert-page wrapper sets the
+       printable area; everything outside it (header / nav / footer) is
+       hidden via the @media print rule below so the saved PDF is just the
+       certificate. */
+    body { background: var(--ink-50); color: var(--ink-900); }
+    .cert-shell {
+      max-width: 880px; margin: 32px auto;
+      padding: 0 24px;
+    }
+    .cert-toolbar {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 12px 16px; background: #fff; border: 1px solid var(--ink-100);
+      border-radius: var(--radius); margin-bottom: 16px;
+      box-shadow: var(--shadow-sm);
+    }
+    .cert-toolbar .small { color: var(--ink-500); }
+
+    /* The certificate itself — A4-ish proportions, kente top stripe, navy
+       seal in the bottom corner, gold border. */
+    .cert-page {
+      background: #fff;
+      width: 100%;
+      aspect-ratio: 1 / 1.414;       /* A4 portrait */
+      max-width: 880px;
+      margin: 0 auto;
+      box-shadow: 0 12px 40px rgba(11,31,58,0.12);
+      position: relative;
+      padding: 60px 64px 56px;
+      border: 6px solid var(--gold-500);
+      box-sizing: border-box;
+      overflow: hidden;
+    }
+    .cert-page::before {
+      content: ""; position: absolute; left: 0; right: 0; top: 0; height: 14px;
+      background:
+        repeating-linear-gradient(90deg,
+          var(--red)       0 18px,
+          var(--gold-500)  18px 36px,
+          var(--green)     36px 54px,
+          var(--navy-900)  54px 72px,
+          var(--blue)      72px 90px);
+    }
+    .cert-mark {
+      display: flex; align-items: center; gap: 14px; margin-bottom: 12px;
+    }
+    .cert-mark .pm-mark {
+      width: 56px; height: 56px; border-radius: 12px;
+      background: var(--navy-900); color: #fff; display: grid; place-items: center;
+      font-family: var(--font-display); font-weight: 800; font-size: 1.6rem;
+      letter-spacing: 0.04em;
+    }
+    .cert-mark .label {
+      font-size: 0.78rem; font-weight: 700; letter-spacing: 0.18em;
+      text-transform: uppercase; color: var(--ink-500);
+    }
+    .cert-mark strong {
+      font-family: var(--font-display); font-size: 1.6rem;
+      color: var(--navy-900); display: block;
+    }
+    .cert-title {
+      font-family: var(--font-display);
+      font-size: clamp(2.2rem, 4vw + 1rem, 3.4rem);
+      font-weight: 800;
+      color: var(--navy-900);
+      letter-spacing: -0.02em;
+      line-height: 1;
+      margin: 32px 0 8px;
+    }
+    .cert-sub {
+      color: var(--ink-700); font-size: 1.05rem; margin: 0 0 38px;
+      max-width: 60ch;
+    }
+    .cert-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 12px 28px;
+      margin-bottom: 24px;
+    }
+    .cert-grid .row { padding: 12px 0; border-bottom: 1px dashed var(--ink-300); }
+    .cert-grid .row .lbl {
+      font-size: 0.72rem; font-weight: 700; letter-spacing: 0.14em;
+      color: var(--ink-500); text-transform: uppercase;
+    }
+    .cert-grid .row strong {
+      font-family: var(--font-display);
+      font-size: 1.1rem; color: var(--navy-900); display: block;
+      margin-top: 4px;
+    }
+    .cert-coverage {
+      background: linear-gradient(135deg, var(--navy-900), var(--navy-700));
+      color: #fff; border-radius: var(--radius);
+      padding: 22px 26px; margin: 14px 0 28px;
+      display: grid; grid-template-columns: 1fr auto; gap: 16px; align-items: center;
+    }
+    .cert-coverage h3 { color: #fff; margin: 0 0 4px; }
+    .cert-coverage p  { color: rgba(255,255,255,0.82); margin: 0; }
+    .cert-coverage .badge {
+      background: var(--gold-500); color: var(--navy-900);
+      padding: 8px 14px; border-radius: 999px;
+      font-weight: 700; font-size: 0.86rem; white-space: nowrap;
+    }
+
+    .cert-terms {
+      font-size: 0.86rem; line-height: 1.6; color: var(--ink-700); margin-bottom: 28px;
+    }
+    .cert-terms strong { color: var(--navy-900); display: block; margin-bottom: 6px; font-size: 0.92rem; }
+    .cert-terms ul { margin: 0; padding-left: 20px; }
+    .cert-terms li { margin-bottom: 4px; }
+
+    .cert-foot {
+      position: absolute; left: 64px; right: 64px; bottom: 50px;
+      display: grid; grid-template-columns: 1fr auto; gap: 24px; align-items: end;
+    }
+    .cert-sig {
+      border-top: 2px solid var(--navy-900);
+      padding-top: 6px;
+      max-width: 260px;
+    }
+    .cert-sig strong {
+      font-family: var(--font-display); color: var(--navy-900);
+      font-size: 1rem; display: block;
+    }
+    .cert-sig small { color: var(--ink-500); font-size: 0.78rem; }
+    .cert-seal {
+      width: 110px; height: 110px; border-radius: 50%;
+      background:
+        radial-gradient(circle at 50% 35%, rgba(255,255,255,0.18), transparent 60%),
+        var(--navy-900);
+      color: #fff; display: grid; place-items: center;
+      font-family: var(--font-display); font-weight: 800;
+      letter-spacing: 0.06em; text-align: center;
+      box-shadow: 0 8px 24px rgba(11,31,58,0.18);
+      border: 4px solid var(--gold-500);
+      transform: rotate(-7deg);
+    }
+    .cert-seal small { display: block; font-size: 0.62rem; letter-spacing: 0.16em; opacity: 0.8; }
+
+    .cert-ref-strip {
+      position: absolute; bottom: 0; left: 0; right: 0;
+      background: var(--ink-50); border-top: 1px solid var(--ink-100);
+      padding: 10px 64px; font-size: 0.74rem; color: var(--ink-500);
+      display: flex; justify-content: space-between;
+      font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+    }
+
+    /* Missing booking ref state */
+    .cert-missing {
+      max-width: 600px; margin: 80px auto; text-align: center;
+      background: #fff; border-radius: var(--radius);
+      padding: 48px 32px; box-shadow: var(--shadow);
+    }
+
+    /* Print rules: hide everything outside .cert-page so the saved PDF is
+       just the certificate. Backgrounds and shadows print correctly via
+       -webkit-print-color-adjust. */
+    @media print {
+      body { background: #fff; }
+      #pm-nav, #pm-footer, .cert-toolbar { display: none !important; }
+      .cert-shell { margin: 0; padding: 0; }
+      .cert-page  { box-shadow: none; margin: 0; aspect-ratio: auto; height: auto; min-height: 100vh; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      @page { size: A4 portrait; margin: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div id="pm-nav"></div>
+
+  <div class="cert-shell">
+    <!-- Toolbar lives outside the printable cert. Hidden when the page is printed. -->
+    <div class="cert-toolbar">
+      <div>
+        <strong style="font-family:var(--font-display);color:var(--navy-900);">Warranty certificate</strong>
+        <span class="small" id="certRef" style="margin-left:8px;font-family:ui-monospace,monospace;">—</span>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-outline" onclick="history.back()">← Back</button>
+        <button class="btn btn-primary" onclick="window.print()">⬇ Download PDF</button>
+      </div>
+    </div>
+
+    <main id="certHost"></main>
+  </div>
+
+  <div id="pm-footer"></div>
+
+  <script src="assets/shared.js"></script>
+  <script>
+    pmMountLayout();
+
+    const params  = new URLSearchParams(location.search);
+    const refRaw  = (params.get('ref') || '').trim();
+    const host    = document.getElementById('certHost');
+
+    if (!refRaw) {
+      host.innerHTML = `
+        <div class="cert-missing">
+          <span class="eyebrow">No booking specified</span>
+          <h1 class="mt-16">Add a booking ref to view a certificate.</h1>
+          <p>Open this page with <code>?ref=PM-XXXXXX</code> on the URL, or click the certificate link from your account dashboard.</p>
+          <a class="btn btn-primary mt-16" href="my.html#warranty">Open my account →</a>
+        </div>`;
+    } else {
+      // Pull the booking from any source we know about — a fallback chain so
+      // the cert still renders even when the customer-side store and the
+      // admin-side store haven't been hydrated by the same browser.
+      const data = lookupBooking(refRaw);
+      document.getElementById('certRef').textContent = data.ref;
+      renderCert(data);
+    }
+
+    /**
+     * Look up a booking by ref. Sources, in priority:
+     *  1. localStorage `pm_booking_v1` — the customer's last booking on this device
+     *  2. localStorage `pm_admin_store_v1` (if present, jobs[] array)
+     *  3. localStorage `pm_painter_jobs_demo_v1` — painter dashboard demo
+     *  4. Fallback: synthesise enough fields to render the cert, using the ref alone
+     */
+    function lookupBooking(ref) {
+      // (1) Customer-side last booking
+      try {
+        const b = JSON.parse(localStorage.getItem('pm_booking_v1') || 'null');
+        if (b && (b.ref || b.bookingRef) === ref) {
+          return normalise({
+            ref,
+            customer: b.customer || (typeof pmAuth !== 'undefined' && pmAuth.user()?.name) || 'Valued customer',
+            painter:  b.painter || 'Your Paint Master',
+            service:  b.service || (b.quote && b.quote.quote && b.quote.quote.svc && b.quote.quote.svc.name) || 'Painting service',
+            address:  b.address || '—',
+            startDate: b.date || b.startDate || todayIso(),
+            endDate:   b.endDate || b.date || todayIso(),
+            completedAt: b.completedAt || b.endDate || todayIso(),
+            amount:   (b.quote && b.quote.quote && b.quote.quote.total) || b.amount || null,
+          });
+        }
+      } catch (e) {}
+
+      // (2) Admin store
+      try {
+        const adminStore = JSON.parse(localStorage.getItem('pm_admin_store_v1') || 'null');
+        if (adminStore && Array.isArray(adminStore.jobs)) {
+          const j = adminStore.jobs.find(x => x.ref === ref);
+          if (j) {
+            const painter = (adminStore.artisans || []).find(a => a.id === j.assignedTo);
+            return normalise({
+              ref,
+              customer: j.customer || 'Valued customer',
+              painter:  painter ? painter.name : 'Your Paint Master',
+              service:  j.service || 'Painting service',
+              address:  j.address || '—',
+              startDate: j.date || todayIso(),
+              endDate:   j.endDate || j.date || todayIso(),
+              completedAt: j.endDate || j.date || todayIso(),
+              amount:   j.amount || null,
+            });
+          }
+        }
+      } catch (e) {}
+
+      // (3) Final fallback — minimal cert keyed only by the ref.
+      return normalise({
+        ref,
+        customer:  (typeof pmAuth !== 'undefined' && pmAuth.user()?.name) || 'Valued customer',
+        painter:   'Your Paint Master',
+        service:   'Painting service',
+        address:   '—',
+        startDate: todayIso(),
+        endDate:   todayIso(),
+        completedAt: todayIso(),
+        amount:    null,
+      });
+    }
+
+    /** Normalise a booking record into the exact shape renderCert expects. */
+    function normalise(b) {
+      // Cover-from = completedAt; cover-to = +12 months.
+      const start = new Date(b.completedAt || b.endDate || b.startDate);
+      const end   = new Date(start); end.setFullYear(end.getFullYear() + 1); end.setDate(end.getDate() - 1);
+      return Object.assign({}, b, {
+        coverFrom: start.toISOString().slice(0, 10),
+        coverTo:   end.toISOString().slice(0, 10),
+        certNo:    'WC-' + b.ref.replace(/^PM-/, ''),
+        issueDate: todayIso(),
+      });
+    }
+
+    function todayIso() { return new Date().toISOString().slice(0, 10); }
+    function fmtLong(iso) {
+      if (!iso) return '—';
+      return new Date(iso).toLocaleDateString('en-GB', { day:'numeric', month:'long', year:'numeric' });
+    }
+
+    function renderCert(d) {
+      host.innerHTML = `
+        <div class="cert-page">
+          <div class="cert-mark">
+            <span class="pm-mark">PM</span>
+            <div>
+              <span class="label">Paint Masters Ghana</span>
+              <strong>Finish Warranty Certificate</strong>
+            </div>
+          </div>
+
+          <h1 class="cert-title">12-month finish guarantee.</h1>
+          <p class="cert-sub">This certificate confirms that the works listed below were carried out by a Paint Masters certified Master and are covered by our 12-month finish warranty against premature failure of the painted surface under normal residential or commercial use.</p>
+
+          <div class="cert-grid">
+            <div class="row"><div class="lbl">Issued to</div><strong>${escHtml(d.customer)}</strong></div>
+            <div class="row"><div class="lbl">Booking ref</div><strong>${escHtml(d.ref)}</strong></div>
+            <div class="row"><div class="lbl">Service</div><strong>${escHtml(d.service)}</strong></div>
+            <div class="row"><div class="lbl">Site address</div><strong>${escHtml(d.address)}</strong></div>
+            <div class="row"><div class="lbl">Paint Master</div><strong>${escHtml(d.painter)}</strong></div>
+            <div class="row"><div class="lbl">Job dates</div><strong>${fmtLong(d.startDate)}${d.endDate && d.endDate !== d.startDate ? ' → ' + fmtLong(d.endDate) : ''}</strong></div>
+          </div>
+
+          <div class="cert-coverage">
+            <div>
+              <h3>Cover period</h3>
+              <p>${fmtLong(d.coverFrom)} — ${fmtLong(d.coverTo)}</p>
+            </div>
+            <span class="badge">12 months</span>
+          </div>
+
+          <div class="cert-terms">
+            <strong>What this covers</strong>
+            <ul>
+              <li>Premature peeling, blistering, flaking, or cracking of the topcoat under normal use.</li>
+              <li>Colour defects (drift between batches, uneven coverage) attributable to application.</li>
+              <li>Trim and detail work carried out as part of the booked service.</li>
+            </ul>
+            <strong style="margin-top:14px;">What's excluded</strong>
+            <ul>
+              <li>Damage from impact, abrasion, modification, or third-party work after our completion date.</li>
+              <li>Pre-existing substrate failures we flagged in writing before painting.</li>
+              <li>Surfaces re-coated by anyone other than a Paint Masters certified Master.</li>
+            </ul>
+            <p style="margin-top:14px;">Claims: contact your dispatcher within the cover period via the project tracker, or email <strong>warranty@paintmasters.gh</strong>.</p>
+          </div>
+
+          <div class="cert-foot">
+            <div class="cert-sig">
+              <strong>Akosua Boateng</strong>
+              <small>Lead Dispatcher · Paint Masters Ghana</small>
+            </div>
+            <div class="cert-seal">
+              CERTIFIED<br/>
+              <small>PAINT MASTER</small>
+            </div>
+          </div>
+
+          <div class="cert-ref-strip">
+            <span>Certificate № ${d.certNo}</span>
+            <span>Issued ${fmtLong(d.issueDate)}</span>
+          </div>
+        </div>`;
+    }
+
+    function escHtml(s) {
+      return String(s == null ? '' : s)
+        .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+        .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+    }
+  </script>
+</body>
+</html>

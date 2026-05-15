@@ -1,0 +1,353 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" type="image/png" href="../assets/img/favicon.png" />
+  <title>Painter Payouts — Paint Masters Dispatcher</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/admin.css" />
+  <style>
+    /* Payout table — wider amount columns, kente top border on the totals
+       row so the "platform-wide" line stands out from per-painter rows. */
+    .pay-tbl { width: 100%; border-collapse: collapse; background: #fff; border-radius: 12px; overflow: hidden; }
+    .pay-tbl thead th {
+      text-align: left; font-size: 0.74rem; font-weight: 700; letter-spacing: 0.06em;
+      text-transform: uppercase; color: var(--ink-500);
+      padding: 12px 14px; border-bottom: 1px solid var(--ink-100); background: var(--ink-50);
+    }
+    .pay-tbl thead th.right { text-align: right; }
+    .pay-tbl tbody td {
+      padding: 14px; border-bottom: 1px solid var(--ink-100); font-size: 0.92rem;
+    }
+    .pay-tbl tbody td.right { text-align: right; font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace; }
+    .pay-tbl tbody tr:hover { background: rgba(245,184,0,0.04); }
+    .pay-painter {
+      display: flex; align-items: center; gap: 12px;
+    }
+    .pay-painter .avatar {
+      width: 36px; height: 36px; border-radius: 50%;
+      display: grid; place-items: center; color: #fff; font-weight: 700; font-size: 0.78rem; flex-shrink: 0;
+    }
+    .pay-painter strong { color: var(--navy-900); font-size: 0.95rem; display: block; }
+    .pay-painter .small { color: var(--ink-500); font-size: 0.78rem; }
+    .pay-amount-input {
+      width: 110px; padding: 6px 10px; border: 1.5px solid var(--ink-300);
+      border-radius: 8px; font-size: 0.86rem; font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+      text-align: right;
+    }
+    .pay-amount-input:focus { outline: 0; border-color: var(--navy-700); }
+    .pay-status-pill {
+      font-size: 0.7rem; font-weight: 700; padding: 3px 9px; border-radius: 999px;
+      letter-spacing: 0.06em; text-transform: uppercase;
+    }
+    .pay-status-pending { background: var(--gold-100); color: #6B4F00; }
+    .pay-status-paid    { background: #D1FAE5; color: #065F46; }
+
+    /* Period selector */
+    .period-pills { display: flex; gap: 6px; }
+    .period-pills .chip { padding: 6px 14px; }
+
+    .totals-card {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-top: 18px;
+    }
+    @media (max-width: 760px) { .totals-card { grid-template-columns: repeat(2, 1fr); } }
+    .tot-card {
+      background: #fff; border: 1px solid var(--ink-100); border-radius: 12px; padding: 16px 18px;
+    }
+    .tot-card .lbl { font-size: 0.74rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-500); }
+    .tot-card .val { font-family: var(--font-display); font-size: 1.4rem; font-weight: 700; color: var(--navy-900); margin-top: 6px; }
+    .tot-card .sub { font-size: 0.78rem; color: var(--ink-500); margin-top: 2px; }
+  </style>
+</head>
+<body>
+  <div class="admin-shell">
+    <div id="admin-sidebar"></div>
+    <div class="admin-main">
+      <div id="admin-topbar"></div>
+      <div class="main">
+
+        <div class="page-head">
+          <div>
+            <h1>Painter Commissions</h1>
+            <div class="sub" id="payoutsSub">Painters are paid a per-job commission, not a salary. Each row shows their auto-calc; you can override before clicking Mark paid.</div>
+          </div>
+          <div class="page-actions">
+            <div class="chip-group period-pills" id="periodPills">
+              <button class="chip" data-period="week">This week</button>
+              <button class="chip active" data-period="month">This month</button>
+              <button class="chip" data-period="quarter">Last 90 days</button>
+            </div>
+            <button class="btn btn-outline" onclick="exportPayoutsCSV()">⤓ Export CSV</button>
+          </div>
+        </div>
+
+        <div class="totals-card">
+          <div class="tot-card"><div class="lbl">Painters with commissions</div><div class="val" id="totPainters">—</div><div class="sub">In selected period</div></div>
+          <div class="tot-card"><div class="lbl">Total gross</div><div class="val" id="totGross">—</div><div class="sub">Sum of completed jobs</div></div>
+          <div class="tot-card"><div class="lbl">Platform fee (10%)</div><div class="val" id="totFee">—</div><div class="sub">Held by Paint Masters</div></div>
+          <div class="tot-card"><div class="lbl">Payable to painters</div><div class="val" id="totPay">—</div><div class="sub">Commission less 5% warranty hold</div></div>
+        </div>
+
+        <!-- Filters -->
+        <div class="filterbar mt-24">
+          <input type="search" id="paySearch" placeholder="Filter by painter name..." />
+          <select class="sel" id="payStatusFilter">
+            <option value="">All statuses</option>
+            <option value="pending">Pending payouts</option>
+            <option value="paid">Paid this period</option>
+          </select>
+          <span class="small" style="margin-left:auto;color:var(--ink-500);" id="payInfo">—</span>
+        </div>
+
+        <!-- Payouts table -->
+        <div style="margin-top:18px;overflow-x:auto;">
+          <table class="pay-tbl" id="payTbl">
+            <thead>
+              <tr>
+                <th>Painter</th>
+                <th class="right">Rate</th>
+                <th class="right">Jobs</th>
+                <th class="right">Gross (GHS)</th>
+                <th class="right">Commission</th>
+                <th class="right">Warranty 5%</th>
+                <th class="right">Payable now</th>
+                <th class="right" style="min-width:130px;">Override</th>
+                <th class="right">Status</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="payRows"></tbody>
+          </table>
+        </div>
+
+        <p class="small mt-24" style="color:var(--ink-500);">
+          ℹ️ The auto-calc uses the same Phase 1 split locked in <code>backend/docs/PAYMENTS.md</code>: 90% net to painter, 5% warranty hold. The override lets you adjust before paying — useful for partial-week splits, advances, or post-warranty releases. When Hubtel Send Money ships in Phase 2, the "Mark paid" button becomes "Send via Hubtel" and the disbursement happens server-side.
+        </p>
+
+      </div>
+    </div>
+  </div>
+
+  <script src="../assets/shared.js"></script>
+  <script src="assets/admin-shared.js"></script>
+  <script>
+    adminMount('payouts');
+
+    // pmPayouts registry — payout records keyed by painter+period. Persists
+    // to localStorage so admin can re-open the page and see what was already
+    // paid. When the backend ships /api/admin/payouts, this becomes a thin
+    // client over that endpoint.
+    const PAYOUTS_KEY = 'pm_payouts_v1';
+    function loadPayouts() {
+      try { return JSON.parse(localStorage.getItem(PAYOUTS_KEY) || '[]'); }
+      catch (e) { return []; }
+    }
+    function savePayouts(arr) { try { localStorage.setItem(PAYOUTS_KEY, JSON.stringify(arr)); } catch (e) {} }
+    function payoutFor(painterId, period) {
+      return loadPayouts().find(p => p.painter_id === painterId && p.period === period) || null;
+    }
+
+    const filters = { search: '', status: '', period: 'month' };
+
+    function periodCutoff(period) {
+      const d = new Date(); d.setHours(0,0,0,0);
+      if (period === 'week')    d.setDate(d.getDate() - 7);
+      else if (period === 'quarter') d.setDate(d.getDate() - 90);
+      else                      d.setDate(d.getDate() - 30);
+      return d;
+    }
+    function periodLabel(period) {
+      return period === 'week' ? 'Last 7 days' : period === 'quarter' ? 'Last 90 days' : 'Last 30 days';
+    }
+
+    function computePainterRow(painter, jobsInPeriod) {
+      // Per-painter commission rate (default 90% if missing). The rate is
+      // applied to gross — net here = commission. Warranty hold is 5% of
+      // commission and releases at 90 days with no claim.
+      const rate = Number.isFinite(painter.commissionRate) ? painter.commissionRate : 90;
+      const completed = jobsInPeriod.filter(j => j.assignedTo === painter.id && j.stage === 'completed');
+      const gross = completed.reduce((s, j) => s + (j.amount || 0), 0);
+      const net = Math.round(gross * (rate / 100));         // commission this period
+      const warranty = Math.round(net * 0.05);
+      const payable = net - warranty;
+      const existing = payoutFor(painter.id, filters.period);
+      const status = existing ? existing.status : 'pending';
+      const override = existing && existing.override != null ? existing.override : null;
+      return { painter, rate, completed, gross, net, warranty, payable, status, override, paidAt: existing?.paid_at, paidAmount: existing?.amount };
+    }
+
+    function render() {
+      const s = getStore();
+      const cutoff = periodCutoff(filters.period);
+      const cutoffIso = cutoff.toISOString().slice(0,10);
+      const jobsInPeriod = s.jobs.filter(j => !j.deleted_at && (j.endDate || j.date) >= cutoffIso);
+
+      let rows = s.artisans
+        .map(a => computePainterRow(a, jobsInPeriod))
+        .filter(r => r.gross > 0 || r.status === 'paid'); // only show painters with earnings
+
+      // Apply search + status filters.
+      if (filters.search) {
+        const q = filters.search.toLowerCase();
+        rows = rows.filter(r => r.painter.name.toLowerCase().includes(q));
+      }
+      if (filters.status) {
+        rows = rows.filter(r => r.status === filters.status);
+      }
+
+      // Totals strip.
+      const totGross = rows.reduce((s, r) => s + r.gross, 0);
+      const totFee   = rows.reduce((s, r) => s + (r.gross - r.net), 0);
+      const totPay   = rows.reduce((s, r) => s + (r.override != null ? r.override : r.payable), 0);
+      document.getElementById('totPainters').textContent = rows.length;
+      document.getElementById('totGross').textContent    = fmtGHS(totGross);
+      document.getElementById('totFee').textContent      = fmtGHS(totFee);
+      document.getElementById('totPay').textContent      = fmtGHS(totPay);
+      document.getElementById('payoutsSub').textContent  = `${periodLabel(filters.period)} · ${rows.length} painter${rows.length === 1 ? '' : 's'} · Phase 1: dispatcher-controlled. Phase 2 routes through Hubtel Send Money.`;
+      document.getElementById('payInfo').textContent     = `${rows.length} of ${s.artisans.length} painters · ${periodLabel(filters.period).toLowerCase()}`;
+
+      // Per-row table.
+      const host = document.getElementById('payRows');
+      if (!rows.length) {
+        host.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:36px;color:var(--ink-500);">No painters with completed jobs in ${periodLabel(filters.period).toLowerCase()}.</td></tr>`;
+        return;
+      }
+      host.innerHTML = rows.map(r => {
+        const overrideVal = r.override != null ? r.override : r.payable;
+        const isPaid = r.status === 'paid';
+        const statusClass = isPaid ? 'pay-status-paid' : 'pay-status-pending';
+        const statusLabel = isPaid ? `Paid · ${fmtGHS(r.paidAmount)}` : 'Pending';
+        return `
+          <tr data-id="${r.painter.id}">
+            <td>
+              <div class="pay-painter">
+                <div class="avatar" style="background:${r.painter.color};">${r.painter.initials}</div>
+                <div>
+                  <strong>${r.painter.name}</strong>
+                  <span class="small">${r.painter.region} · ${r.painter.specs.join(', ')}</span>
+                </div>
+              </div>
+            </td>
+            <td class="right">${r.completed.length}</td>
+            <td class="right">${fmtGHS(r.gross)}</td>
+            <td class="right">${fmtGHS(r.net)}</td>
+            <td class="right" style="color:var(--ink-500);">${fmtGHS(r.warranty)}</td>
+            <td class="right" style="font-weight:700;color:var(--navy-900);">${fmtGHS(r.payable)}</td>
+            <td class="right">
+              <input type="number" class="pay-amount-input" min="0" step="1" value="${overrideVal}"
+                     ${isPaid ? 'disabled' : ''}
+                     data-id="${r.painter.id}" data-auto="${r.payable}"
+                     onchange="onOverrideChange(this)" />
+            </td>
+            <td class="right"><span class="pay-status-pill ${statusClass}">${statusLabel}</span></td>
+            <td class="right">
+              ${isPaid
+                ? `<button class="btn btn-outline" style="padding:6px 12px;font-size:0.78rem;" onclick="undoPaid('${r.painter.id}')">↶ Undo</button>`
+                : `<button class="btn btn-primary" style="padding:6px 14px;font-size:0.78rem;" onclick="markPaid('${r.painter.id}')">Mark paid</button>`}
+            </td>
+          </tr>`;
+      }).join('');
+    }
+
+    function onOverrideChange(input) {
+      const painterId = input.dataset.id;
+      const auto = Number(input.dataset.auto);
+      const v = Number(input.value);
+      if (!Number.isFinite(v) || v < 0) { input.value = auto; return; }
+      // Persist the override so it survives page reload, but mark status pending.
+      const list = loadPayouts();
+      let row = list.find(p => p.painter_id === painterId && p.period === filters.period);
+      if (!row) {
+        row = { painter_id: painterId, period: filters.period, status: 'pending', override: v, created_at: new Date().toISOString() };
+        list.unshift(row);
+      } else {
+        row.override = v;
+      }
+      savePayouts(list);
+    }
+
+    function markPaid(painterId) {
+      const s = getStore();
+      const a = s.artisans.find(x => x.id === painterId); if (!a) return;
+      const cutoff = periodCutoff(filters.period).toISOString().slice(0,10);
+      const completed = s.jobs.filter(j => !j.deleted_at && j.assignedTo === painterId && j.stage === 'completed' && (j.endDate || j.date) >= cutoff);
+      const gross = completed.reduce((s, j) => s + (j.amount || 0), 0);
+      const net = Math.round(gross * 0.9);
+      const warranty = Math.round(net * 0.05);
+      const payable = net - warranty;
+      const list = loadPayouts();
+      let row = list.find(p => p.painter_id === painterId && p.period === filters.period);
+      const amount = (row && row.override != null) ? row.override : payable;
+      if (!confirm(`Mark ${a.name} as paid ${fmtGHS(amount)} for ${periodLabel(filters.period).toLowerCase()}?`)) return;
+      if (!row) {
+        row = { painter_id: painterId, period: filters.period, override: null, status: 'paid', amount, paid_at: new Date().toISOString(), created_at: new Date().toISOString() };
+        list.unshift(row);
+      } else {
+        row.status = 'paid';
+        row.amount = amount;
+        row.paid_at = new Date().toISOString();
+      }
+      savePayouts(list);
+      const actor = (typeof pmAuth !== 'undefined' && pmAuth.user()?.name) || 'Admin';
+      if (typeof pmActivity !== 'undefined') {
+        pmActivity.emit({
+          kind: 'payment',
+          title: `Payout: ${a.name} · ${fmtGHS(amount)}`,
+          sub: `${periodLabel(filters.period)} · ${completed.length} job${completed.length === 1 ? '' : 's'}`,
+          source: { role: 'admin', name: actor },
+          target: { role: 'painter', id: a.id, name: a.name },
+        });
+      }
+      toast(`${a.name} marked paid (${fmtGHS(amount)}).`);
+      render();
+    }
+
+    function undoPaid(painterId) {
+      const list = loadPayouts();
+      const row = list.find(p => p.painter_id === painterId && p.period === filters.period);
+      if (!row) return;
+      if (!confirm('Undo this payout? The status flips back to pending.')) return;
+      row.status = 'pending';
+      delete row.amount;
+      delete row.paid_at;
+      savePayouts(list);
+      render();
+      toast('Payout undone.');
+    }
+
+    function exportPayoutsCSV() {
+      const s = getStore();
+      const cutoff = periodCutoff(filters.period).toISOString().slice(0,10);
+      const jobsInPeriod = s.jobs.filter(j => !j.deleted_at && (j.endDate || j.date) >= cutoff);
+      const rows = s.artisans.map(a => computePainterRow(a, jobsInPeriod)).filter(r => r.gross > 0 || r.status === 'paid');
+      const header = ['painter','phone','region','jobs','gross_ghs','net_ghs','warranty_ghs','payable_ghs','override_ghs','status','paid_at','paid_amount_ghs'];
+      const lines = [header.join(',')].concat(rows.map(r => [
+        r.painter.name, r.painter.phone || '', r.painter.region, r.completed.length, r.gross, r.net, r.warranty, r.payable,
+        r.override == null ? '' : r.override, r.status, r.paidAt || '', r.paidAmount || ''
+      ].map(v => `"${String(v ?? '').replace(/"/g,'""')}"`).join(','))).join('\n');
+      const blob = new Blob([lines], { type: 'text/csv;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `paintmasters-payouts-${filters.period}-${new Date().toISOString().slice(0,10)}.csv`;
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+      toast(`Exported ${rows.length} payout row${rows.length === 1 ? '' : 's'}.`);
+    }
+
+    // Wire filters + period chips.
+    document.getElementById('paySearch').addEventListener('input', e => { filters.search = e.target.value; render(); });
+    document.getElementById('payStatusFilter').addEventListener('change', e => { filters.status = e.target.value; render(); });
+    document.getElementById('periodPills').addEventListener('click', e => {
+      const b = e.target.closest('.chip'); if (!b) return;
+      filters.period = b.dataset.period;
+      document.querySelectorAll('#periodPills .chip').forEach(c => c.classList.toggle('active', c === b));
+      render();
+    });
+
+    render();
+  </script>
+</body>
+</html>

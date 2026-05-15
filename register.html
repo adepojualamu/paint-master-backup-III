@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" type="image/png" href="assets/img/favicon.png" />
+  <title>Become a Paint Master — Apply</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/styles.css" />
+  <style>
+    .reg-hero {
+      background:
+        radial-gradient(900px 400px at 90% 0%, rgba(245,184,0,0.18), transparent 60%),
+        linear-gradient(180deg, #F7FAFD, #FFFFFF);
+      padding: 56px 24px 28px;
+    }
+    .reg-grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 32px; max-width: var(--container); margin: 0 auto; padding: 0 24px 60px; }
+    @media (max-width: 900px) { .reg-grid { grid-template-columns: 1fr; padding-bottom: 40px; } }
+
+    .reg-form {
+      background: #fff; border: 1px solid var(--ink-100); border-radius: 18px;
+      padding: 30px 28px; box-shadow: 0 12px 32px rgba(11,31,58,0.06);
+    }
+    .reg-form h2 { margin: 0 0 6px; }
+    .reg-form .lede { color: var(--ink-500); margin-bottom: 22px; }
+
+    .field { margin-bottom: 16px; }
+    .field label { display: block; font-size: 0.85rem; font-weight: 600; color: var(--ink-700); margin-bottom: 6px; }
+    .field input, .field select, .field textarea {
+      width: 100%; padding: 11px 14px; border: 1.5px solid var(--ink-300);
+      border-radius: 10px; font-size: 0.95rem; font-family: inherit; background: #fff;
+    }
+    .field input:focus, .field select:focus, .field textarea:focus {
+      outline: 0; border-color: var(--navy-700); box-shadow: 0 0 0 4px rgba(46,112,201,0.10);
+    }
+    .field textarea { min-height: 90px; resize: vertical; }
+    .field .hint { font-size: 0.78rem; color: var(--ink-500); margin-top: 5px; }
+    .field .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    @media (max-width: 480px) { .field .pair { grid-template-columns: 1fr; } }
+
+    .specs-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    @media (max-width: 600px) { .specs-grid { grid-template-columns: repeat(2, 1fr); } }
+    .specs-grid label {
+      display: flex; align-items: center; gap: 8px;
+      padding: 10px 12px; border: 1.5px solid var(--ink-300); border-radius: 10px;
+      font-size: 0.88rem; font-weight: 500; cursor: pointer; transition: border-color 0.15s, background 0.15s;
+    }
+    .specs-grid label:has(input:checked) {
+      border-color: var(--gold-500); background: var(--gold-100); color: var(--navy-900);
+    }
+    .specs-grid input { width: auto; }
+
+    .why-card {
+      background: var(--navy-900); color: #fff; border-radius: 18px; padding: 30px 28px;
+      position: sticky; top: 100px;
+    }
+    .why-card h3 { color: #fff; margin: 0 0 6px; font-size: 1.5rem; }
+    .why-card .gold { color: var(--gold-500); font-weight: 700; }
+    .why-card ul { list-style: none; padding: 0; margin: 18px 0 0; }
+    .why-card li {
+      display: flex; gap: 12px; padding: 12px 0; border-bottom: 1px solid rgba(255,255,255,0.08);
+    }
+    .why-card li:last-child { border: 0; }
+    .why-card li .ico { font-size: 1.4rem; flex: 0 0 30px; }
+    .why-card li strong { color: #fff; display: block; font-size: 0.95rem; }
+    .why-card li small  { color: rgba(255,255,255,0.7); font-size: 0.82rem; }
+
+    .alert { padding: 12px 16px; border-radius: 10px; margin-bottom: 16px; font-size: 0.9rem; display: none; }
+    .alert.show { display: block; }
+    .alert.err { background: #FEE2E2; color: #991B1B; border: 1px solid #FCA5A5; }
+    .alert.ok  { background: #D1FAE5; color: #065F46; border: 1px solid #6EE7B7; }
+
+    .success-panel {
+      display: none; text-align: center; padding: 36px 28px;
+    }
+    .success-panel.show { display: block; }
+    .success-panel .badge {
+      width: 80px; height: 80px; border-radius: 50%; background: var(--gold-100);
+      display: grid; place-items: center; font-size: 2rem;
+      margin: 0 auto 18px;
+    }
+  </style>
+</head>
+<body>
+  <div id="pm-nav"></div>
+
+  <section class="reg-hero">
+    <div class="container">
+      <span class="eyebrow" id="regEyebrow">For Paint Masters</span>
+      <h1 class="mt-16" id="regHeadline">Apply to join the Paint Masters roster.</h1>
+      <p style="max-width:680px;" id="regLede">A 6-week certification, then steady jobs in your region — paid via MoMo within 24 hours of QA. Tell us about you below.</p>
+    </div>
+  </section>
+
+  <script>
+    // When the visitor arrives via "Apply to the Academy →" we reframe
+    // the hero so the form clearly reads as an Academy application.
+    (function () {
+      const params = new URLSearchParams(location.search);
+      if (params.get('source') === 'academy') {
+        document.getElementById('regEyebrow').textContent = 'Paint Masters Academy';
+        document.getElementById('regHeadline').textContent = 'Apply to the Academy.';
+        document.getElementById('regLede').textContent =
+          'Six weeks of paid training (GHS 1,500 stipend), tools and PPE provided, then a guaranteed minimum monthly booking. Tell us about you below — we review every application within 5 working days.';
+      }
+    })();
+  </script>
+
+  <div class="reg-grid">
+    <div>
+      <form class="reg-form" id="regForm" novalidate>
+        <h2>Your application</h2>
+        <p class="lede">All fields except email and references are required. We review applications within 5 working days.</p>
+
+        <div class="alert err" id="errBox"></div>
+
+        <div class="field">
+          <label for="rName">Full name *</label>
+          <input id="rName" type="text" placeholder="e.g. Kofi Asante" required />
+        </div>
+
+        <div class="field pair">
+          <div>
+            <label for="rPhone">Phone (Ghana) *</label>
+            <input id="rPhone" type="tel" placeholder="0244 000 000" required />
+          </div>
+          <div>
+            <label for="rEmail">Email</label>
+            <input id="rEmail" type="email" placeholder="optional" />
+          </div>
+        </div>
+
+        <div class="field pair">
+          <div>
+            <label for="rRegion">Primary region *</label>
+            <select id="rRegion" required
+                    data-pm-regions='{"placeholder":"Select…","includeOther":true}'>
+              <option value="">Select…</option>
+            </select>
+          </div>
+          <div>
+            <label for="rYears">Years of experience *</label>
+            <select id="rYears" required>
+              <option value="">Select…</option>
+              <option value="0">Less than 1</option>
+              <option value="1">1–2</option>
+              <option value="3">3–5</option>
+              <option value="6">6–9</option>
+              <option value="10">10+</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Specialities (pick all that apply) *</label>
+          <div class="specs-grid">
+            <label><input type="checkbox" name="spec" value="Interior" /> Interior</label>
+            <label><input type="checkbox" name="spec" value="Exterior" /> Exterior</label>
+            <label><input type="checkbox" name="spec" value="Decorative" /> Decorative</label>
+            <label><input type="checkbox" name="spec" value="Commercial" /> Commercial</label>
+            <label><input type="checkbox" name="spec" value="Epoxy" /> Epoxy floors</label>
+            <label><input type="checkbox" name="spec" value="Roof" /> Roof coating</label>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="rBio">Tell us about your work *</label>
+          <textarea id="rBio" placeholder="What kind of jobs have you done? Any standout projects? What makes you stand out?" required></textarea>
+        </div>
+
+        <div class="field">
+          <label for="rRef">References</label>
+          <textarea id="rRef" placeholder="Names + phone numbers of past customers or contractors who can vouch for you. Optional but speeds up approval."></textarea>
+        </div>
+
+        <div class="field" style="margin-bottom:24px;">
+          <label style="display:flex;gap:8px;align-items:flex-start;font-weight:500;cursor:pointer;">
+            <input type="checkbox" id="rAgree" style="width:auto;margin-top:3px;" required />
+            <span style="font-size:0.85rem;color:var(--ink-700);">I agree to a background check and the 6-week Paint Masters certification. I understand my application will be reviewed by the Paint Masters team and a decision will be communicated within 5 working days.</span>
+          </label>
+        </div>
+
+        <button type="submit" class="btn btn-primary btn-block btn-lg" id="submitBtn">Submit application</button>
+
+        <p class="small" style="margin-top:18px;text-align:center;color:var(--ink-500);">
+          Already approved? <a href="login.html" style="color:var(--navy-900);font-weight:600;">Sign in here</a>.
+        </p>
+      </form>
+
+      <!-- Success view (replaces the form on submit) -->
+      <div class="reg-form success-panel" id="successPanel">
+        <div class="badge">📨</div>
+        <h2 style="font-size:1.6rem;">Application received.</h2>
+        <p style="color:var(--ink-700);max-width:440px;margin:6px auto 18px;">
+          We'll review your application within 5 working days. If approved, we'll send your Paint Masters credentials via SMS to <strong id="okPhone">your number</strong>.
+        </p>
+        <a href="index.html" class="btn btn-outline">Back to home</a>
+      </div>
+    </div>
+
+    <div>
+      <div class="why-card">
+        <h3>Why join <span class="gold">Paint Masters</span>?</h3>
+        <ul>
+          <li>
+            <span class="ico">💰</span>
+            <div><strong>Steady, fair pay</strong><small>90% of every job goes to you. Paid via MoMo within 24 hours of QA pass.</small></div>
+          </li>
+          <li>
+            <span class="ico">🎓</span>
+            <div><strong>Certification + training</strong><small>6-week program covering technique, surface prep, faux finishes, and customer service.</small></div>
+          </li>
+          <li>
+            <span class="ico">📅</span>
+            <div><strong>Booked jobs</strong><small>No more chasing leads. We dispatch jobs that match your specialities and region.</small></div>
+          </li>
+          <li>
+            <span class="ico">🛡️</span>
+            <div><strong>Backed by Paint Masters</strong><small>The 12-month warranty is on us, not you. Customer disputes go through our dispatch team.</small></div>
+          </li>
+          <li>
+            <span class="ico">📈</span>
+            <div><strong>Build your name</strong><small>Reviews, ratings, and a public profile customers can browse and request.</small></div>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div id="pm-footer"></div>
+
+  <script src="assets/shared.js"></script>
+  <script>
+    pmMountLayout('register');
+
+    // Populate the region dropdown from the central pmRegions store.
+    pmRegions.populate(document.getElementById('rRegion'), '', { placeholder: 'Select…', includeOther: true });
+
+    const errBox = document.getElementById('errBox');
+    const form = document.getElementById('regForm');
+
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      errBox.classList.remove('show');
+
+      const name   = document.getElementById('rName').value.trim();
+      const phone  = document.getElementById('rPhone').value.trim().replace(/\s+/g, '');
+      const email  = document.getElementById('rEmail').value.trim();
+      const region = document.getElementById('rRegion').value;
+      const years  = document.getElementById('rYears').value;
+      const specs  = [...document.querySelectorAll('input[name="spec"]:checked')].map(c => c.value);
+      const bio    = document.getElementById('rBio').value.trim();
+      const refs   = document.getElementById('rRef').value.trim();
+      const agree  = document.getElementById('rAgree').checked;
+
+      // Validation.
+      if (!name || !phone || !region || !years || !bio) {
+        errBox.textContent = 'Please fill in all required fields.';
+        errBox.classList.add('show'); return;
+      }
+      if (!/^0\d{9}$|^\+?233\d{9}$/.test(phone)) {
+        errBox.textContent = 'Phone must be a Ghana number (0xxxxxxxxx or +233xxxxxxxxx).';
+        errBox.classList.add('show'); return;
+      }
+      if (specs.length === 0) {
+        errBox.textContent = 'Pick at least one speciality.';
+        errBox.classList.add('show'); return;
+      }
+      if (!agree) {
+        errBox.textContent = 'You need to agree to the background check + certification.';
+        errBox.classList.add('show'); return;
+      }
+      // Already on file?
+      if (pmUsers.findByPhone(phone)) {
+        errBox.textContent = 'This phone number already has an application or account on file. Please sign in or contact support.';
+        errBox.classList.add('show'); return;
+      }
+
+      // Add to the shared user store as a pending painter.
+      pmUsers.add({
+        name, phone, email, region,
+        role: 'painter',
+        status: 'pending',
+        meta: { years: Number(years), specs, bio, refs }
+      });
+
+      // Swap form for success view.
+      document.getElementById('okPhone').textContent = phone;
+      form.style.display = 'none';
+      document.getElementById('successPanel').classList.add('show');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+  </script>
+</body>
+</html>

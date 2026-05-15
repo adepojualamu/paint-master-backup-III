@@ -1,0 +1,1336 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" type="image/png" href="assets/img/favicon.png" />
+  <title>Track Your Project — Paint Masters</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/styles.css" />
+  <style>
+    /* Progress-photo upload module — sits inside the existing .photo-grid.
+       Uploaded photos cover the gradient with the real image; the "+ Add"
+       tile is a dashed-bordered upload trigger that matches the grid sizing. */
+    .photo.uploaded {
+      position: relative; background-size: cover; background-position: center; color: transparent;
+    }
+    .photo.uploaded .ph-meta {
+      position: absolute; left: 0; right: 0; bottom: 0;
+      padding: 6px 8px; background: linear-gradient(180deg, rgba(0,0,0,0), rgba(0,0,0,0.55));
+      color: #fff; font-size: 0.7rem; font-weight: 600; text-align: left;
+      border-bottom-left-radius: 10px; border-bottom-right-radius: 10px;
+      display: flex; justify-content: space-between; align-items: flex-end; gap: 6px;
+    }
+    .photo.uploaded .ph-del {
+      width: 22px; height: 22px; border-radius: 50%; background: rgba(0,0,0,0.55);
+      color: #fff; font-size: 0.85rem; line-height: 1; display: grid; place-items: center;
+      cursor: pointer; opacity: 0; transition: opacity 0.15s;
+    }
+    .photo.uploaded:hover .ph-del { opacity: 1; }
+    .photo.upload-tile {
+      background: #fff; border: 2px dashed var(--ink-300); color: var(--ink-500);
+      cursor: pointer; transition: border-color 0.15s, color 0.15s, background 0.15s;
+      font-size: 0.85rem; font-weight: 600; text-align: center; padding: 8px;
+    }
+    .photo.upload-tile:hover, .photo.upload-tile.dragover {
+      border-color: var(--gold-500); color: var(--navy-900); background: var(--gold-100);
+    }
+    .photo.upload-tile .plus { font-size: 1.6rem; line-height: 1; margin-bottom: 4px; display: block; }
+    .upload-hint {
+      font-size: 0.78rem; color: var(--ink-500); margin-top: 10px;
+    }
+    /* Moderation status badge on uploaded tiles. Sits in the top-left so
+       the existing remove-× in the bottom-right doesn't fight for space. */
+    .photo.uploaded .ph-status {
+      position: absolute; top: 6px; left: 6px;
+      font-size: 0.62rem; font-weight: 700; letter-spacing: 0.05em;
+      text-transform: uppercase; padding: 3px 8px; border-radius: 999px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    }
+    .photo.uploaded .ph-status-pending  { background: var(--gold-500); color: var(--navy-900); }
+    .photo.uploaded .ph-status-approved { background: var(--green); color: #fff; }
+    .photo.uploaded .ph-status-rejected { background: var(--red); color: #fff; }
+    .photo.uploaded .ph-status-local    { background: rgba(255,255,255,0.85); color: var(--ink-700); border: 1px solid rgba(0,0,0,0.1); }
+
+    /* ─────────────────────────────────────────────
+       Chat party tags. The existing chat used a flat me/them split.
+       New messages can attach a party (customer / painter / dispatcher /
+       admin / system) and an optional tag pill ("[Photo request]" etc.).
+       ───────────────────────────────────────────── */
+    .msg .party-row {
+      display: flex; align-items: center; gap: 6px;
+      font-size: 0.7rem; font-weight: 700; letter-spacing: 0.06em;
+      text-transform: uppercase; margin-bottom: 4px;
+    }
+    .msg .party-name { color: var(--ink-500); }
+    .msg.them .party-name { color: rgba(255,255,255,0.7); }
+    .msg .tag-pill {
+      display: inline-block;
+      padding: 2px 8px; border-radius: 999px;
+      background: var(--gold-100); color: var(--navy-900);
+      font-size: 0.66rem; font-weight: 700; letter-spacing: 0.06em;
+      text-transform: uppercase; margin-left: 4px;
+    }
+    .msg.tag-photo    .tag-pill { background: rgba(46,112,201,0.15); color: var(--blue); }
+    .msg.tag-scope    .tag-pill { background: rgba(245,184,0,0.18);  color: #8a6300; }
+    .msg.tag-review   .tag-pill { background: rgba(30,127,79,0.15);  color: var(--green); }
+    .msg.tag-concern  .tag-pill,
+    .msg.tag-cash     .tag-pill { background: #FEE2E2; color: #991B1B; }
+    .msg.party-painter   { background: #ECFDF5; color: #065F46; border-color: #A7F3D0; }
+    .msg.party-painter .party-name { color: #065F46; }
+    .msg.party-admin     { background: #FEF3C7; color: #78350F; border-color: #FDE68A; }
+    .msg.party-admin .party-name { color: #78350F; }
+    .msg.party-system    { background: var(--ink-50); color: var(--ink-700); border-color: var(--ink-300); font-style: italic; }
+    .msg.danger          { background: #FEE2E2; color: #991B1B; border-color: #FCA5A5; }
+
+    /* ─────────────────────────────────────────────
+       Shared modal pattern for the four action buttons.
+       Single backdrop element, four hidden panels, swap by data-modal.
+       ───────────────────────────────────────────── */
+    .pm-modal-back {
+      position: fixed; inset: 0; background: rgba(11,31,58,0.5);
+      display: none; align-items: center; justify-content: center;
+      z-index: 1000; padding: 16px;
+    }
+    .pm-modal-back.show { display: flex; }
+    .pm-modal {
+      background: #fff; border-radius: var(--radius-lg);
+      max-width: 540px; width: 100%; box-shadow: var(--shadow-lg);
+      max-height: calc(100vh - 32px); overflow: auto;
+    }
+    .pm-modal-head {
+      padding: 20px 24px 12px; border-bottom: 1px solid var(--ink-100);
+      display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+    }
+    .pm-modal-head h3 { margin: 0 0 4px; }
+    .pm-modal-head .small { color: var(--ink-500); }
+    .pm-modal-close {
+      background: transparent; border: 0; font-size: 1.4rem; line-height: 1;
+      color: var(--ink-500); cursor: pointer; padding: 4px 8px; border-radius: 6px;
+    }
+    .pm-modal-close:hover { background: var(--ink-50); color: var(--navy-900); }
+    .pm-modal-body { padding: 18px 24px; display: flex; flex-direction: column; gap: 14px; }
+    .pm-modal-actions {
+      display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap;
+      padding: 14px 24px 20px; border-top: 1px solid var(--ink-100);
+    }
+    .pm-field { display: flex; flex-direction: column; gap: 6px; }
+    .pm-field > label { font-size: 0.86rem; font-weight: 600; color: var(--navy-900); }
+    .pm-field input[type="text"], .pm-field textarea, .pm-field select {
+      padding: 10px 12px; border-radius: 10px; border: 1.5px solid var(--ink-300);
+      background: #fff; font-size: 0.94rem; color: var(--ink-900); font-family: inherit;
+      transition: border-color 0.15s;
+    }
+    .pm-field textarea { resize: vertical; min-height: 84px; }
+    .pm-field input[type="text"]:focus, .pm-field textarea:focus, .pm-field select:focus {
+      outline: none; border-color: var(--navy-700);
+    }
+    .pm-field .hint { font-size: 0.78rem; color: var(--ink-500); }
+
+    /* Impact pill picker (used in scope-change modal) */
+    .impact-pills { display: flex; gap: 8px; flex-wrap: wrap; }
+    .impact-pill {
+      border: 1.5px solid var(--ink-300); background: #fff;
+      padding: 8px 14px; border-radius: 999px;
+      font-size: 0.86rem; font-weight: 600; color: var(--ink-700);
+      cursor: pointer; transition: all 0.15s;
+    }
+    .impact-pill:hover { border-color: var(--navy-700); }
+    .impact-pill.active { background: var(--navy-900); border-color: var(--navy-900); color: #fff; }
+
+    /* Star picker (used in review modal) */
+    .stars-row { display: flex; gap: 4px; align-items: center; }
+    .star-btn {
+      background: transparent; border: 0; padding: 0; cursor: pointer;
+      font-size: 2.1rem; line-height: 1; color: var(--ink-300);
+      transition: color 0.1s, transform 0.1s;
+    }
+    .star-btn:hover { transform: scale(1.08); }
+    .star-btn.active { color: var(--gold-500); }
+    .star-label { margin-left: 12px; font-size: 0.92rem; color: var(--ink-500); }
+
+    /* Artisan card inside the review modal */
+    .artisan-card {
+      display: flex; align-items: center; gap: 14px;
+      background: var(--ink-50); border: 1px solid var(--ink-100);
+      border-radius: var(--radius); padding: 14px;
+    }
+    .artisan-card .avatar {
+      width: 56px; height: 56px; border-radius: 50%;
+      display: grid; place-items: center; color: #fff; font-weight: 700; font-size: 1.1rem;
+      background: linear-gradient(135deg, var(--navy-700), var(--navy-900));
+      flex-shrink: 0;
+    }
+    .artisan-card strong { display: block; font-family: var(--font-display); color: var(--navy-900); }
+    .artisan-card .small { color: var(--ink-500); }
+
+    /* Before/after photo composer */
+    .ba-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+    }
+    .ba-tile {
+      position: relative; aspect-ratio: 1.2 / 1; border-radius: 10px;
+      background-size: cover; background-position: center;
+      background-color: var(--ink-100);
+      border: 2px solid transparent;
+      cursor: pointer; overflow: hidden;
+    }
+    .ba-tile.before { border-color: var(--blue); }
+    .ba-tile.after  { border-color: var(--green); }
+    .ba-tag {
+      position: absolute; top: 6px; left: 6px;
+      background: rgba(11,31,58,0.85); color: #fff;
+      padding: 2px 8px; border-radius: 999px;
+      font-size: 0.7rem; font-weight: 700; letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+    .ba-controls {
+      position: absolute; right: 6px; bottom: 6px; display: flex; gap: 4px;
+      opacity: 0; transition: opacity 0.15s;
+    }
+    .ba-tile:hover .ba-controls { opacity: 1; }
+    .ba-controls button {
+      background: rgba(11,31,58,0.85); color: #fff;
+      padding: 3px 8px; border-radius: 999px;
+      font-size: 0.7rem; font-weight: 700;
+    }
+
+    .pm-toast {
+      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+      background: var(--navy-900); color: #fff;
+      padding: 10px 18px; border-radius: 999px; font-weight: 600; font-size: 0.92rem;
+      box-shadow: var(--shadow);
+      opacity: 0; transition: opacity 0.18s, transform 0.18s;
+      z-index: 1100; pointer-events: none;
+    }
+    .pm-toast.show { opacity: 1; transform: translateX(-50%) translateY(-4px); }
+
+    /* Channel-picker pills above the chat input. */
+    .chat-channel-row {
+      display: flex; gap: 6px; padding: 6px 10px 0;
+      background: rgba(255,255,255,0.04);
+    }
+    .chat-ch-pill {
+      background: rgba(255,255,255,0.06);
+      color: rgba(255,255,255,0.78);
+      border: 1px solid rgba(255,255,255,0.12);
+      padding: 5px 10px; border-radius: 999px;
+      font-size: 0.74rem; font-weight: 600; letter-spacing: 0.02em;
+      cursor: pointer; transition: background 0.15s, color 0.15s;
+    }
+    .chat-ch-pill:hover { background: rgba(255,255,255,0.12); color: #fff; }
+    .chat-ch-pill.active { background: var(--gold-500); color: var(--navy-900); border-color: var(--gold-500); }
+  </style>
+</head>
+<body>
+  <div id="pm-nav"></div>
+
+  <!-- Customer + admin only. The tracker is the customer's view of a single
+       booking; painters get their own dashboard at painter.html where every
+       job they're working on is listed (and where they can drill into each).
+       So a painter who lands here gets bounced to their own dashboard, and
+       a customer can only see bookings tied to them. Admin sees anything. -->
+  <script src="assets/shared.js"></script>
+  <script>
+    const me = pmRequireAuth();
+    if (me) {
+      // Painters belong on painter.html. If a painter URL-types this page,
+      // bounce them — preserve any ?ref= so painter.html can deep-link if
+      // it's one of theirs.
+      if (me.role === 'painter') {
+        const ref = new URLSearchParams(location.search).get('ref') || '';
+        location.replace('painter.html' + (ref ? '?ref=' + encodeURIComponent(ref) : ''));
+      }
+      // Customers viewing a ?ref= that isn't theirs: validate against the
+      // admin store (when present) or the customer's last booking. Admins
+      // skip the check.
+      else if (me.role === 'customer') {
+        const requested = new URLSearchParams(location.search).get('ref') || '';
+        if (requested) {
+          let owned = false;
+          // Customer's own last booking on this device.
+          try {
+            const b = JSON.parse(localStorage.getItem('pm_booking_v1') || 'null');
+            if (b && (b.ref || b.bookingRef) === requested) owned = true;
+          } catch (e) {}
+          // Cross-check the admin store if present (customer + dispatcher
+          // are on the same device, e.g. a tester switching roles).
+          if (!owned) {
+            try {
+              const adm = JSON.parse(localStorage.getItem('pm_admin_store_v1') || 'null');
+              if (adm && Array.isArray(adm.jobs)) {
+                const j = adm.jobs.find(x => x.ref === requested);
+                // Customer ownership in the demo store is by name match (no
+                // proper customer_id link). If it doesn't match, we
+                // optimistically allow viewing (the demo data isn't strict)
+                // but flag the case for admin review.
+                if (j && me.name && j.customer && j.customer.toLowerCase().includes(me.name.toLowerCase().split(' ')[0])) {
+                  owned = true;
+                }
+              }
+            } catch (e) {}
+          }
+          if (!owned) {
+            // Replace the page with a friendly 'not your job' state.
+            document.addEventListener('DOMContentLoaded', () => {
+              document.body.innerHTML = `
+                <div id="pm-nav"></div>
+                <section style="max-width:680px;margin:80px auto;padding:48px 32px;text-align:center;background:#fff;border-radius:14px;box-shadow:0 12px 32px rgba(11,31,58,0.08);border:1px solid var(--ink-100);">
+                  <span style="display:inline-block;font-size:0.78rem;font-weight:700;letter-spacing:0.16em;text-transform:uppercase;color:var(--red);">Not your job</span>
+                  <h1 style="margin-top:14px;">This tracker isn't yours.</h1>
+                  <p style="color:var(--ink-700);">Booking <code>${requested.replace(/[<>]/g,'')}</code> isn't tied to your account. If this is a mistake, contact dispatch.</p>
+                  <div style="display:flex;gap:10px;justify-content:center;margin-top:18px;">
+                    <a class="btn btn-primary" href="my.html">Go to my account</a>
+                    <a class="btn btn-ghost" href="index.html">Back to home</a>
+                  </div>
+                </section>
+                <div id="pm-footer"></div>
+                <script src="assets/shared.js"><\/script>
+                <script>pmMountLayout();<\/script>
+              `;
+            });
+          }
+        }
+      }
+      // Admin (and the legacy default) can view any tracker — useful for
+      // debugging customer issues.
+    }
+  </script>
+
+  <section class="section-sm" style="background:linear-gradient(180deg,#F7FAFD,#FFFFFF);">
+    <div class="container" style="padding:40px 24px 16px;">
+      <div class="flex-between">
+        <div>
+          <span class="eyebrow" id="trackEyebrow">Project Tracker</span>
+          <h1 class="mt-16" style="margin-bottom:6px;" id="trackTitle">Your Paint Masters project</h1>
+          <p id="bookSummary">Live updates as the job moves through each stage.</p>
+        </div>
+        <div class="card" style="min-width:260px;">
+          <div class="flex-between">
+            <div>
+              <div class="small">Booking ref</div>
+              <strong id="tRef" style="font-family:var(--font-display);font-size:1.3rem;">PM-000000</strong>
+            </div>
+            <span class="badge green" id="tStatus">Work in progress</span>
+          </div>
+          <div class="progress mt-16"><span id="tProgress" style="width:60%"></span></div>
+          <div class="small mt-8" id="tEta">ETA: completion by tomorrow, 5pm</div>
+        </div>
+      </div>
+
+      <div class="chip-group mt-24" id="stageChips">
+        <span class="small" style="align-self:center;margin-right:8px;color:var(--ink-500);">Preview stage:</span>
+        <button class="chip" data-stage="0">Scheduled</button>
+        <button class="chip" data-stage="1">Dispatched</button>
+        <button class="chip" data-stage="2">On site</button>
+        <button class="chip active" data-stage="3">In progress</button>
+        <button class="chip" data-stage="4">QA Check</button>
+        <button class="chip" data-stage="5">Completed</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" style="padding-top:24px;">
+    <div class="container">
+      <div class="track-wrap">
+        <!-- TIMELINE + PROJECT DETAILS -->
+        <div>
+          <div class="card">
+            <h3 class="mt-0">Project details</h3>
+            <div class="flex-between" style="border-top:1px solid var(--ink-100);padding-top:14px;">
+              <div>
+                <div class="small">Service</div>
+                <strong id="dService">Interior Wall Repaint</strong>
+              </div>
+              <div>
+                <div class="small">Address</div>
+                <strong id="dAddress">12 Josif Broz Tito Ave, East Legon</strong>
+              </div>
+              <div>
+                <div class="small">Scheduled</div>
+                <strong id="dDate">Mon, 27 April · Morning</strong>
+              </div>
+            </div>
+            <div class="flex-between mt-16">
+              <div>
+                <div class="small">Assigned Paint Master</div>
+                <div style="display:flex;align-items:center;gap:10px;margin-top:4px;">
+                  <div class="avatar">KA</div>
+                  <div>
+                    <strong>Kofi Asante</strong><br/>
+                    <span class="small">★ 4.9 · Specialisations: Interior, Faux finish</span>
+                  </div>
+                </div>
+              </div>
+              <div>
+                <div class="small">Dispatcher</div>
+                <div style="display:flex;align-items:center;gap:10px;margin-top:4px;">
+                  <div class="avatar" style="background:linear-gradient(135deg,var(--blue),var(--navy-900));">AB</div>
+                  <div>
+                    <strong>Akosua Boateng</strong><br/>
+                    <span class="small">Central Dispatch</span>
+                  </div>
+                </div>
+              </div>
+              <div>
+                <div class="small">Total</div>
+                <strong style="font-family:var(--font-display);font-size:1.3rem;" id="dTotal">GHS 3,850</strong>
+              </div>
+            </div>
+          </div>
+
+          <div class="card mt-16">
+            <h3 class="mt-0">Timeline</h3>
+            <div class="timeline" id="timeline">
+              <div class="tl-item done" data-stage="0">
+                <h4>Booking confirmed</h4>
+                <div class="when">Fri 24 Apr, 10:23 AM</div>
+                <p>Deposit received and escrow locked. Digital contract signed.</p>
+              </div>
+              <div class="tl-item done" data-stage="1">
+                <h4>Master Dispatched</h4>
+                <div class="when">Mon 27 Apr, 7:18 AM</div>
+                <p>Kofi Asante assigned. Materials loaded. ETA 7:45 AM.</p>
+              </div>
+              <div class="tl-item done" data-stage="2">
+                <h4>Arrived on site</h4>
+                <div class="when">Mon 27 Apr, 7:42 AM</div>
+                <p>Furniture protected. Prep work in progress.</p>
+              </div>
+              <div class="tl-item active" data-stage="3">
+                <h4>Work in progress</h4>
+                <div class="when">In progress now</div>
+                <p>2nd coat drying. Progress photos uploaded at 11:30 AM.</p>
+              </div>
+              <div class="tl-item" data-stage="4">
+                <h4>Ready for Quality Check</h4>
+                <div class="when">Expected Tue 28 Apr</div>
+                <p>Our QA team inspects finish, corners, coverage, and clean-up.</p>
+              </div>
+              <div class="tl-item" data-stage="5">
+                <h4>Completed · Warranty issued</h4>
+                <div class="when">Expected Tue 28 Apr</div>
+                <p>Digital warranty certificate emailed. Final payment released.</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="card mt-16">
+            <h3 class="mt-0">Progress photos</h3>
+            <p class="small">Uploaded by your Paint Master through the artisan app — and you can add your own to share with the team.</p>
+            <div class="photo-grid mt-16" id="photoGrid">
+              <div class="photo">BEFORE</div>
+              <div class="photo v2">PREP</div>
+              <div class="photo v3">COAT 1</div>
+              <div class="photo v4">COAT 2</div>
+              <div class="photo">DETAIL</div>
+              <div class="photo v2">FINAL</div>
+            </div>
+            <input type="file" id="photoInput" accept="image/*" multiple style="display:none" />
+            <p class="upload-hint">Tip: hover an uploaded photo to remove it. Photos are stored locally on this device until the backend is connected.</p>
+          </div>
+
+          <div class="card mt-16">
+            <h3 class="mt-0">Materials & hours logged</h3>
+            <table style="width:100%;border-collapse:collapse;font-size:0.92rem;">
+              <thead>
+                <tr style="text-align:left;color:var(--ink-500);font-size:0.82rem;">
+                  <th style="padding:8px 0;border-bottom:1px solid var(--ink-100);">Item</th>
+                  <th style="padding:8px 0;border-bottom:1px solid var(--ink-100);">Qty</th>
+                  <th style="padding:8px 0;border-bottom:1px solid var(--ink-100);">Notes</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td style="padding:10px 0;border-bottom:1px dashed var(--ink-100);">Dulux Weathershield 4L (Ivory)</td><td>3</td><td>2-coat coverage</td></tr>
+                <tr><td style="padding:10px 0;border-bottom:1px dashed var(--ink-100);">Primer sealer</td><td>1</td><td>Concrete walls</td></tr>
+                <tr><td style="padding:10px 0;border-bottom:1px dashed var(--ink-100);">Masking tape</td><td>4 rolls</td><td>Trim & ceiling line</td></tr>
+                <tr><td style="padding:10px 0;">Labour hours</td><td>11.5 h</td><td>1 Master + 1 apprentice</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- CHAT + ACTIONS -->
+        <div>
+          <div class="chat">
+            <div class="chat-head">
+              <div class="avatar" style="background:linear-gradient(135deg,var(--blue),var(--navy-900));">AB</div>
+              <div>
+                <strong>Akosua — Dispatcher</strong><br/>
+                <span class="small" style="color:rgba(255,255,255,0.7);">Typically responds in 8 min</span>
+              </div>
+            </div>
+            <div class="chat-body" id="chatBody">
+              <div class="msg them">Hi! Kofi is heading your way now — ETA 7:45 AM. Any last-minute instructions?<span class="t">7:12 AM</span></div>
+              <div class="msg me">Great — the side gate code is 2486. Dog is friendly.<span class="t">7:15 AM</span></div>
+              <div class="msg them">Got it, passing to Kofi now 👍<span class="t">7:15 AM</span></div>
+              <div class="msg them">Kofi has arrived and started prep. I've uploaded the first photo to your tracker.<span class="t">7:42 AM</span></div>
+              <div class="msg me">Thank you 🙏<span class="t">7:43 AM</span></div>
+              <div class="msg them">Update: first coat going on now. Second coat after lunch.<span class="t">10:05 AM</span></div>
+            </div>
+            <!-- Channel picker — three small pills above the input. Default
+                 'platform' goes through the in-app chat; 'sms' / 'whatsapp'
+                 open the device's native app pre-filled, and we append a
+                 system-tagged receipt to the chat so there's a record. -->
+            <div class="chat-channel-row" id="chatChannelRow" role="radiogroup" aria-label="Send via">
+              <button type="button" class="chat-ch-pill active" data-ch="platform" title="In-app chat">💬 In-platform</button>
+              <button type="button" class="chat-ch-pill" data-ch="sms"      title="Open SMS app">📱 SMS</button>
+              <button type="button" class="chat-ch-pill" data-ch="whatsapp" title="Open WhatsApp">🟢 WhatsApp</button>
+            </div>
+            <form class="chat-input" onsubmit="sendMsg(event)">
+              <input id="chatInput" placeholder="Send a message to the dispatcher..." />
+              <button type="submit">Send</button>
+            </form>
+          </div>
+
+          <div class="card mt-16">
+            <h3 class="mt-0">Need anything?</h3>
+            <div style="display:grid;gap:8px;">
+              <button id="btnRequestPhoto" class="btn btn-outline btn-block" onclick="openModal('photo')">📸 Request a specific photo</button>
+              <button id="btnChangeScope"  class="btn btn-outline btn-block" onclick="openModal('scope')">📝 Change scope (needs approval)</button>
+              <button id="btnLeaveReview"  class="btn btn-outline btn-block" onclick="openModal('review')">⭐ Leave a review (after QA)</button>
+              <button class="btn btn-outline btn-block" onclick="reportCashRequest()" style="color:var(--red);border-color:var(--red);">⚠️ Report a cash request</button>
+              <button id="btnReportConcern" class="btn btn-outline btn-block" onclick="openModal('concern')" style="color:var(--red);border-color:var(--red);">⚠️ Report a concern</button>
+            </div>
+          </div>
+
+          <!-- Cashless reminder — sits in the sidebar so it's visible the entire
+               time the job is live, including during messaging. -->
+          <div class="card mt-16" style="background:rgba(245,184,0,0.08);border:1px solid rgba(245,184,0,0.35);">
+            <div style="display:flex;gap:10px;align-items:flex-start;">
+              <span aria-hidden="true" style="font-size:1.4rem;line-height:1.2;">🔒</span>
+              <div>
+                <strong style="color:var(--navy-900);display:block;margin-bottom:4px;">Cashless reminder</strong>
+                <p class="small" style="margin:0;color:var(--ink-700);line-height:1.5;">
+                  Paint Masters never accept cash. Your payment is in escrow and only releases after QA passes —
+                  so don't pay your Master in cash at any point. If you're ever asked, tap <strong>Report a cash request</strong> above.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="card mt-16" style="background:linear-gradient(135deg,var(--navy-900),var(--navy-700));color:#fff;">
+            <div class="flex-between">
+              <h3 style="color:#fff;margin:0;">Your warranty</h3>
+              <span class="badge gold">12 months</span>
+            </div>
+            <p style="color:rgba(255,255,255,0.85);margin-top:8px;">Once completed, you'll receive a digital certificate. Keep it — we'll need the reference number if you claim.</p>
+            <a class="btn btn-gold btn-block mt-16" href="javascript:void(0)" onclick="openWarrantyCert()">📄 Download certificate</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─────────────────────────────────────────────
+       Action modals — single backdrop, four panels.
+       openModal('photo'|'scope'|'review'|'concern') swaps the visible panel.
+       ───────────────────────────────────────────── -->
+  <div class="pm-modal-back" id="pmModalBack" role="dialog" aria-modal="true">
+    <div class="pm-modal" data-modal="photo" hidden>
+      <div class="pm-modal-head">
+        <div>
+          <h3>📸 Request a specific photo</h3>
+          <p class="small">We'll forward this to your Paint Master and dispatch.</p>
+        </div>
+        <button class="pm-modal-close" onclick="closeModal()" aria-label="Close">×</button>
+      </div>
+      <form class="pm-modal-body" id="photoForm" onsubmit="submitPhotoRequest(event)">
+        <div class="pm-field">
+          <label for="photoSpot">Which spot would you like a photo of?</label>
+          <textarea id="photoSpot" required maxlength="280"
+            placeholder="e.g. The corner above the door — I want to make sure the seam is even."></textarea>
+          <span class="hint">Be as specific as you can — room, wall, surface, or feature.</span>
+        </div>
+        <div class="pm-modal-actions">
+          <button type="button" class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+          <button type="submit" class="btn btn-primary">Send request</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="pm-modal" data-modal="scope" hidden>
+      <div class="pm-modal-head">
+        <div>
+          <h3>📝 Change scope</h3>
+          <p class="small">Adds or removes work from your booking. Both your Master and admin must approve before it takes effect.</p>
+        </div>
+        <button class="pm-modal-close" onclick="closeModal()" aria-label="Close">×</button>
+      </div>
+      <form class="pm-modal-body" id="scopeForm" onsubmit="submitScopeChange(event)">
+        <div class="pm-field">
+          <label for="scopeChange">What change do you want to make?</label>
+          <textarea id="scopeChange" required maxlength="500"
+            placeholder="e.g. Add the second-floor hallway to the same scope. About 18 m². Same colour."></textarea>
+        </div>
+        <div class="pm-field">
+          <label>Estimated impact</label>
+          <div class="impact-pills" id="impactPills">
+            <button type="button" class="impact-pill active" data-impact="small">Small — under 30 min</button>
+            <button type="button" class="impact-pill" data-impact="medium">Medium — half day</button>
+            <button type="button" class="impact-pill" data-impact="large">Large — full day or more</button>
+          </div>
+          <span class="hint">A quick guess is fine — your Master will confirm the actual time and cost.</span>
+        </div>
+        <label style="display:flex;gap:8px;align-items:center;font-size:0.92rem;color:var(--ink-700);">
+          <input type="checkbox" id="scopeWantsBudget" checked />
+          I'd like a revised quote before approving.
+        </label>
+        <div class="pm-modal-actions">
+          <button type="button" class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+          <button type="submit" class="btn btn-primary">Submit for approval</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="pm-modal" data-modal="review" hidden>
+      <div class="pm-modal-head">
+        <div>
+          <h3>⭐ Leave a review</h3>
+          <p class="small">Your rating helps every future customer pick the right Master.</p>
+        </div>
+        <button class="pm-modal-close" onclick="closeModal()" aria-label="Close">×</button>
+      </div>
+      <form class="pm-modal-body" id="reviewForm" onsubmit="submitReview(event)">
+        <div class="artisan-card" id="reviewArtisanCard">
+          <div class="avatar" id="reviewArtisanAvatar">KA</div>
+          <div>
+            <strong id="reviewArtisanName">Kofi Asante</strong>
+            <span class="small" id="reviewArtisanRole">Paint Master · Specialisations: Interior, Faux finish</span>
+          </div>
+        </div>
+
+        <div class="pm-field">
+          <label>Your rating</label>
+          <div class="stars-row" id="starsRow" role="radiogroup" aria-label="Star rating">
+            <button type="button" class="star-btn" data-star="1" aria-label="1 star">★</button>
+            <button type="button" class="star-btn" data-star="2" aria-label="2 stars">★</button>
+            <button type="button" class="star-btn" data-star="3" aria-label="3 stars">★</button>
+            <button type="button" class="star-btn" data-star="4" aria-label="4 stars">★</button>
+            <button type="button" class="star-btn" data-star="5" aria-label="5 stars">★</button>
+            <span class="star-label" id="starLabel">Tap a star</span>
+          </div>
+        </div>
+
+        <div class="pm-field">
+          <label>Before / after photos <span class="hint">(optional — pulled from your project photos)</span></label>
+          <div class="ba-grid" id="baGrid"></div>
+          <span class="hint">Click a photo to mark it as <strong>Before</strong>, again for <strong>After</strong>, again to clear. Customers love seeing both.</span>
+        </div>
+
+        <div class="pm-field">
+          <label for="reviewComment">Your comment</label>
+          <textarea id="reviewComment" maxlength="1000"
+            placeholder="What stood out? Punctuality, finish quality, communication, clean-up..."></textarea>
+        </div>
+
+        <div class="pm-modal-actions">
+          <button type="button" class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+          <button type="submit" class="btn btn-gold" id="reviewSubmit" disabled>Post review</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="pm-modal" data-modal="concern" hidden>
+      <div class="pm-modal-head">
+        <div>
+          <h3>⚠️ Report a concern</h3>
+          <p class="small">Goes straight to a senior dispatcher. Anything not safe or not right.</p>
+        </div>
+        <button class="pm-modal-close" onclick="closeModal()" aria-label="Close">×</button>
+      </div>
+      <form class="pm-modal-body" id="concernForm" onsubmit="submitConcern(event)">
+        <div class="pm-field">
+          <label for="concernCategory">What's the concern?</label>
+          <select id="concernCategory" required>
+            <option value="">Pick a category…</option>
+            <option value="quality">Quality of work</option>
+            <option value="safety">Safety on site</option>
+            <option value="behaviour">Master's behaviour</option>
+            <option value="property">Property damage</option>
+            <option value="other">Something else</option>
+          </select>
+        </div>
+        <div class="pm-field">
+          <label for="concernDesc">Tell us what happened</label>
+          <textarea id="concernDesc" required maxlength="2000"
+            placeholder="What did you see or experience? When? Who else was on site?"></textarea>
+        </div>
+        <label style="display:flex;gap:8px;align-items:center;font-size:0.92rem;color:var(--ink-700);">
+          <input type="checkbox" id="concernCallback" />
+          Have a senior dispatcher call me back within an hour.
+        </label>
+        <div class="pm-modal-actions">
+          <button type="button" class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+          <button type="submit" class="btn btn-primary" style="background:var(--red);">Submit concern</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="pm-toast" id="pmToast" role="status" aria-live="polite">Saved</div>
+
+  <div id="pm-footer"></div>
+  <script>
+    pmMountLayout('track');
+
+    // Personalise the heading for the signed-in member.
+    if (me && me.name) {
+      const firstName = me.name.split(' ')[0];
+      document.getElementById('trackTitle').textContent = `${firstName}'s Paint Masters project`;
+      document.getElementById('trackEyebrow').textContent = '🛡️ Member project tracker';
+    }
+
+    // If a booking ref came in via ?ref= (e.g. a member clicked a card on
+    // my.html), surface it as the active booking reference.
+    const urlRef = new URLSearchParams(location.search).get('ref');
+
+    // Populate from booking if available
+    const booking = (() => { try { return JSON.parse(localStorage.getItem('pm_booking_v1') || 'null'); } catch(e){ return null; } })();
+    if (booking && booking.quote && booking.quote.quote) {
+      const q = booking.quote.quote;
+      document.getElementById('tRef').textContent = booking.ref || 'PM-482015';
+      document.getElementById('dService').textContent = q.svc.name;
+      document.getElementById('dTotal').textContent = pmFormatGHS(q.total);
+      if (booking.date) {
+        const d = new Date(booking.date);
+        document.getElementById('dDate').textContent = d.toLocaleDateString('en-GB', { weekday:'short', day:'numeric', month:'short' }) + ' · ' + (booking.window || 'Morning');
+      }
+      document.getElementById('bookSummary').innerHTML = `<strong>${q.svc.name}</strong> · ${q.area.toFixed(0)} m² · ${pmFormatGHS(q.total)}`;
+    } else {
+      // Default demo data
+      document.getElementById('tRef').textContent = urlRef || 'PM-482015';
+    }
+    // If a ref came in via the URL, override whatever was loaded.
+    if (urlRef) document.getElementById('tRef').textContent = urlRef;
+
+    // Stage switcher
+    const STAGES = [
+      { label:'Scheduled',        badge:'blue',  txt:'Scheduled',        progress:10, eta:'Starts Mon 27 April, morning' },
+      { label:'Master Dispatched',badge:'blue',  txt:'Master en route',  progress:30, eta:'ETA 7:45 AM' },
+      { label:'On site',          badge:'gold',  txt:'On site',          progress:45, eta:'Prep under way' },
+      { label:'Work in progress', badge:'green', txt:'Work in progress', progress:65, eta:'Completion expected tomorrow 5 PM' },
+      { label:'QA Check',         badge:'gold',  txt:'Quality check',    progress:85, eta:'QA inspection scheduled' },
+      { label:'Completed',        badge:'green', txt:'Completed',        progress:100,eta:'Warranty issued' }
+    ];
+    function setStage(idx) {
+      document.querySelectorAll('.tl-item').forEach((el, i) => {
+        el.classList.remove('done','active');
+        if (i < idx) el.classList.add('done');
+        else if (i === idx) el.classList.add('active');
+      });
+      const s = STAGES[idx];
+      const badge = document.getElementById('tStatus');
+      badge.className = 'badge ' + (s.badge === 'green' ? 'green' : s.badge === 'gold' ? 'gold' : '');
+      badge.textContent = s.txt;
+      document.getElementById('tProgress').style.width = s.progress + '%';
+      document.getElementById('tEta').textContent = s.eta;
+      // Chip active state — match by data-stage
+      document.querySelectorAll('#stageChips .chip').forEach(c => {
+        c.classList.toggle('active', Number(c.dataset.stage) === idx);
+      });
+    }
+    // Wire up stage chips
+    document.getElementById('stageChips').addEventListener('click', e => {
+      const btn = e.target.closest('.chip'); if (!btn) return;
+      setStage(Number(btn.dataset.stage));
+    });
+
+    // ─────────────────────────────────────────────
+    // Progress photo uploads — customer-side.
+    // Photos are resized client-side to ~1200px max edge, JPEG quality 0.78,
+    // then stored as data URLs in localStorage under a per-booking key.
+    // When the backend ships /api/uploads, this function becomes a single
+    // multipart POST to that endpoint and the persistence layer changes.
+    // ─────────────────────────────────────────────
+    const PHOTO_KEY = (() => {
+      const ref = (document.getElementById('tRef').textContent || 'PM-000000').trim();
+      return 'pm_track_photos_' + ref;
+    })();
+
+    function loadPhotos() {
+      try { return JSON.parse(localStorage.getItem(PHOTO_KEY) || '[]'); }
+      catch (e) { return []; }
+    }
+    function savePhotos(arr) {
+      try { localStorage.setItem(PHOTO_KEY, JSON.stringify(arr)); return true; }
+      catch (e) {
+        // Most likely a quota error — surface a friendly message.
+        alert('Could not save the photo locally — your browser storage is full. Try removing older photos.');
+        return false;
+      }
+    }
+
+    // Resize a File to a JPEG data URL with a max edge of `maxEdge`.
+    function shrinkToDataURL(file, maxEdge = 1200, quality = 0.78) {
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        const reader = new FileReader();
+        reader.onload = () => { img.src = reader.result; };
+        reader.onerror = () => reject(new Error('Could not read file.'));
+        img.onload = () => {
+          let { width: w, height: h } = img;
+          const scale = Math.min(1, maxEdge / Math.max(w, h));
+          w = Math.round(w * scale); h = Math.round(h * scale);
+          const canvas = document.createElement('canvas');
+          canvas.width = w; canvas.height = h;
+          canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+          resolve(canvas.toDataURL('image/jpeg', quality));
+        };
+        img.onerror = () => reject(new Error('Could not decode image.'));
+        reader.readAsDataURL(file);
+      });
+    }
+
+    function renderPhotoGrid() {
+      const grid = document.getElementById('photoGrid');
+      // Wipe just the dynamic tiles (uploaded + upload trigger), keep static demo tiles.
+      grid.querySelectorAll('.photo.uploaded, .photo.upload-tile').forEach(n => n.remove());
+
+      // Render each saved upload. Photos with a server-side moderation
+      // status get a small badge: pending (gold), approved (green), local
+      // (grey — backend offline, not real storage). Approved photos look
+      // identical to the seeded demo tiles.
+      const photos = loadPhotos();
+      photos.forEach((p, i) => {
+        const tile = document.createElement('div');
+        tile.className = 'photo uploaded';
+        tile.style.backgroundImage = `url("${p.data}")`;
+        tile.title = p.name || 'Customer upload';
+        const badge = (() => {
+          if (p.status === 'pending')  return '<span class="ph-status ph-status-pending">⏳ Pending review</span>';
+          if (p.status === 'approved') return '<span class="ph-status ph-status-approved">✓ Approved</span>';
+          if (p.status === 'rejected') return '<span class="ph-status ph-status-rejected">✕ Rejected</span>';
+          if (p.status === 'local')    return '<span class="ph-status ph-status-local">Saved locally</span>';
+          return '';
+        })();
+        tile.innerHTML = `
+          ${badge}
+          <div class="ph-meta">
+            <span>${(p.name || 'Photo').slice(0, 24)}</span>
+            <span class="ph-del" data-i="${i}" title="Remove" aria-label="Remove photo">×</span>
+          </div>`;
+        grid.appendChild(tile);
+      });
+
+      // Always append the "+ Add" trigger tile.
+      const adder = document.createElement('div');
+      adder.className = 'photo upload-tile';
+      adder.id = 'photoAdder';
+      adder.innerHTML = `<span><span class="plus">＋</span>Add photos</span>`;
+      adder.addEventListener('click', () => document.getElementById('photoInput').click());
+      // Drag-and-drop niceness.
+      adder.addEventListener('dragover', e => { e.preventDefault(); adder.classList.add('dragover'); });
+      adder.addEventListener('dragleave', () => adder.classList.remove('dragover'));
+      adder.addEventListener('drop', e => {
+        e.preventDefault(); adder.classList.remove('dragover');
+        if (e.dataTransfer && e.dataTransfer.files) handleFiles(e.dataTransfer.files);
+      });
+      grid.appendChild(adder);
+
+      // Wire up remove buttons.
+      grid.querySelectorAll('.ph-del').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const i = Number(btn.dataset.i);
+          const list = loadPhotos();
+          list.splice(i, 1);
+          savePhotos(list);
+          renderPhotoGrid();
+        });
+      });
+    }
+
+    async function handleFiles(fileList) {
+      const files = Array.from(fileList).filter(f => f.type.startsWith('image/'));
+      if (!files.length) return;
+      const list = loadPhotos();
+      const ref = currentBookingRef();
+      for (const f of files) {
+        try {
+          // Try server-side multipart upload first. The backend writes to
+          // disk and returns { id, status: 'pending', url, message }. The
+          // photo enters the admin moderation queue and shows on the
+          // tracker once approved.
+          let serverPhoto = null;
+          try {
+            const form = new FormData();
+            form.append('bookingRef', ref);
+            form.append('caption', '');
+            form.append('file', f, f.name);
+            const headers = {};
+            const tok = (typeof pmAuth !== 'undefined' && pmAuth.token) ? pmAuth.token() : null;
+            if (tok) headers.Authorization = 'Bearer ' + tok;
+            const r = await fetch('/api/uploads/job-photo', { method: 'POST', headers, body: form });
+            if (r.ok) {
+              const json = await r.json();
+              if (json && json.photo) serverPhoto = json.photo;
+            }
+          } catch (e) { /* offline — fall through to local cache */ }
+
+          if (serverPhoto) {
+            // Server-stored: keep a thumbnail data URL locally for instant
+            // preview while the admin moderates. status='pending' until the
+            // moderation queue clears it.
+            const dataURL = await shrinkToDataURL(f, 600, 0.6);
+            list.push({
+              name: f.name, data: dataURL, ts: Date.now(),
+              status: serverPhoto.status || 'pending',
+              serverId: serverPhoto.id,
+              serverUrl: serverPhoto.url,
+            });
+            if (typeof pmActivity !== 'undefined') {
+              pmActivity.emit({
+                kind: 'photo_request',
+                title: `Customer photo uploaded · ${ref}`,
+                sub: `${f.name} · awaiting admin review`,
+                source: { role: 'customer', name: (typeof me !== 'undefined' && me?.name) || 'Customer' }
+              });
+            }
+            if (typeof pmToast === 'function') pmToast('Uploaded — pending admin review.');
+          } else {
+            // Backend offline / not deployed: keep the legacy localStorage
+            // path so the demo still works. Mark as 'local' so the UI knows
+            // it isn't real-server-stored.
+            const dataURL = await shrinkToDataURL(f);
+            list.push({ name: f.name, data: dataURL, ts: Date.now(), status: 'local' });
+          }
+        } catch (err) {
+          console.warn('Skipped photo', f.name, err);
+        }
+      }
+      if (savePhotos(list)) renderPhotoGrid();
+    }
+
+    document.getElementById('photoInput').addEventListener('change', (e) => {
+      handleFiles(e.target.files);
+      e.target.value = ''; // allow re-selecting the same file
+    });
+
+    renderPhotoGrid();
+
+    // Cashless-policy enforcement: the customer can flag a cash request
+    // straight from the tracker. Until the backend ships /api/reports/cash,
+    // we surface a confirmation, log to the chat as a tagged message, and
+    // open a tel: handoff for high-trust escalation.
+    function reportCashRequest() {
+      const ok = confirm(
+        'Report a cash request from your Paint Master?\n\n' +
+        'This sends an immediate alert to dispatch. The Master will be removed ' +
+        'from the roster pending review. You will not lose your deposit.'
+      );
+      if (!ok) return;
+      emitActivity({
+        kind: 'cash_request',
+        title: 'Cash request reported',
+        sub: 'Master removed from roster pending review',
+        severity: 'error'
+      });
+      appendChatMessage({
+        party: 'customer', tag: 'Cash request', danger: true, tagKind: 'cash',
+        text: '⚠️ Cash-request reported. Dispatch will call back within 30 minutes.'
+      });
+      setTimeout(() => appendChatMessage({
+        party: 'dispatcher', tag: 'Cash request', tagKind: 'cash',
+        text: `Got it — a senior dispatcher is calling you now to take a statement. The Master has been pulled from your job. We'll reassign within the hour at no extra cost.`
+      }), 800);
+      pmPostBestEffort('/api/reports/cash', { bookingRef: currentBookingRef() });
+    }
+
+    // Track the selected chat channel — defaults to in-platform. The pill row
+    // above the input lets the customer flip to SMS or WhatsApp; sendMsg
+    // routes accordingly via pmComms and posts a system receipt to chat.
+    let _chatChannel = 'platform';
+    document.getElementById('chatChannelRow')?.addEventListener('click', e => {
+      const b = e.target.closest('.chat-ch-pill'); if (!b) return;
+      _chatChannel = b.dataset.ch;
+      document.querySelectorAll('#chatChannelRow .chat-ch-pill').forEach(p => p.classList.toggle('active', p === b));
+      const inp = document.getElementById('chatInput');
+      if (inp) inp.placeholder = ({
+        platform: 'Send a message to the dispatcher...',
+        sms:      `Compose an SMS to ${PM_DISPATCH_CONTACT?.name || 'dispatch'}...`,
+        whatsapp: `Compose a WhatsApp to ${PM_DISPATCH_CONTACT?.name || 'dispatch'}...`,
+      })[_chatChannel] || 'Send a message...';
+    });
+
+    async function sendMsg(e) {
+      e.preventDefault();
+      const inp = document.getElementById('chatInput');
+      const text = inp.value.trim(); if (!text) return;
+
+      // In-platform: post the bubble + simulate the dispatcher reply (existing
+      // behaviour, just routed through pmComms for the side-effect best-effort
+      // POST so it shows up server-side once /api/messages is live).
+      if (_chatChannel === 'platform') {
+        appendChatMessage({ party: 'customer', text });
+        inp.value = '';
+        if (typeof pmComms !== 'undefined') {
+          pmComms.send({ channel: 'platform', body: text, threadKey: 'booking:' + currentBookingRef(),
+                         platformPath: '/api/bookings/' + currentBookingRef() + '/messages' });
+        }
+        setTimeout(() => appendChatMessage({ party: 'dispatcher', text: 'Thanks — passing that to the Master now 👍' }), 1200);
+        return;
+      }
+
+      // SMS / WhatsApp: hand off to the device's native app via pmComms, post a
+      // system receipt in chat so there's a record of what went out where.
+      const to = (_chatChannel === 'whatsapp')
+        ? (PM_DISPATCH_CONTACT.whatsapp || PM_DISPATCH_CONTACT.phone)
+        : PM_DISPATCH_CONTACT.phone;
+      const res = await pmComms.send({ channel: _chatChannel, to, body: text });
+      if (res.ok) {
+        appendChatMessage({
+          party: 'system',
+          tagKind: _chatChannel,
+          tag: (_chatChannel === 'sms' ? 'SMS' : 'WhatsApp') + ' to ' + (PM_DISPATCH_CONTACT.name || 'dispatch'),
+          text: text
+        });
+        inp.value = '';
+        pmToast(`Opened ${_chatChannel === 'sms' ? 'SMS' : 'WhatsApp'} — finish sending in your app`);
+      } else {
+        pmToast(res.error || 'Could not open ' + _chatChannel);
+      }
+    }
+
+    // ─────────────────────────────────────────────
+    // Generic chat appender. Replaces the ad-hoc DOM building scattered through
+    // sendMsg / reportCashRequest / the four new action handlers. Every new
+    // message goes through here so party styling and tag pills stay consistent.
+    //   party:  'customer' | 'painter' | 'dispatcher' | 'admin' | 'system'
+    //   text:   plain text — escaped before insertion
+    //   tag:    optional pill label, e.g. 'Photo request' (also drives a
+    //            modifier class so the pill colour matches the action)
+    //   tagKind: optional explicit tag-kind override; defaults to a slug of `tag`.
+    //   danger: bool — paints the bubble red (used for cash + concern reports)
+    // ─────────────────────────────────────────────
+    function appendChatMessage({ party = 'customer', text = '', tag = '', tagKind = '', danger = false } = {}) {
+      const body = document.getElementById('chatBody');
+      if (!body) return;
+      const m = document.createElement('div');
+      const isMe = (party === 'customer');
+      const tagSlug = (tagKind || tag || '').toString().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+      const partyClass = `party-${party}`;
+      const dangerClass = danger ? 'danger' : '';
+      const tagClass = tagSlug ? `tag-${tagSlug}` : '';
+      m.className = ['msg', isMe ? 'me' : 'them', partyClass, dangerClass, tagClass].filter(Boolean).join(' ');
+      const partyLabel = ({
+        customer:   'You',
+        painter:    'Kofi (Master)',
+        dispatcher: 'Akosua (Dispatch)',
+        admin:      'Admin',
+        system:     'System'
+      })[party] || party;
+      const safeText = String(text)
+        .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      const tagPill = tag ? `<span class="tag-pill">${tag.replace(/</g,'&lt;')}</span>` : '';
+      const now = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+      m.innerHTML = `
+        <div class="party-row"><span class="party-name">${partyLabel}</span>${tagPill}</div>
+        ${safeText}
+        <span class="t">${now}</span>
+      `;
+      body.appendChild(m);
+      body.scrollTop = body.scrollHeight;
+    }
+
+    // ─────────────────────────────────────────────
+    // Modal open / close. Single backdrop + four panels selected by data-modal.
+    // ─────────────────────────────────────────────
+    const _modalBack = () => document.getElementById('pmModalBack');
+    function openModal(name) {
+      const back = _modalBack(); if (!back) return;
+      back.querySelectorAll('.pm-modal').forEach(p => { p.hidden = (p.dataset.modal !== name); });
+      back.classList.add('show');
+      // Focus the first input/select/textarea inside the visible panel.
+      setTimeout(() => {
+        const panel = back.querySelector(`.pm-modal[data-modal="${name}"]`);
+        const focusable = panel && panel.querySelector('textarea, select, input:not([type="hidden"])');
+        if (focusable) focusable.focus();
+        if (name === 'review') populateReviewModal();
+      }, 30);
+    }
+    function closeModal() { const back = _modalBack(); if (back) back.classList.remove('show'); }
+    document.getElementById('pmModalBack').addEventListener('click', e => {
+      if (e.target === _modalBack()) closeModal();
+    });
+    window.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && _modalBack().classList.contains('show')) closeModal();
+    });
+
+    // Toast helper.
+    function pmToast(msg) {
+      const t = document.getElementById('pmToast');
+      if (!t) return;
+      t.textContent = msg;
+      t.classList.add('show');
+      clearTimeout(pmToast._t);
+      pmToast._t = setTimeout(() => t.classList.remove('show'), 1600);
+    }
+
+    // ─────────────────────────────────────────────
+    // 1) Request a specific photo. Posts to chat with [Photo request] tag,
+    //    then simulates a quick reply from BOTH the painter and dispatch.
+    //    Best-effort POST to the messages endpoint when it ships.
+    // ─────────────────────────────────────────────
+    function submitPhotoRequest(e) {
+      e.preventDefault();
+      const spot = document.getElementById('photoSpot').value.trim();
+      if (!spot) return;
+      closeModal();
+      emitActivity({ kind: 'photo_request', title: 'Photo request', sub: spot });
+      appendChatMessage({
+        party: 'customer', tag: 'Photo request',
+        text: `Could you grab a photo of: ${spot}`
+      });
+      setTimeout(() => appendChatMessage({
+        party: 'painter', tag: 'Photo request',
+        text: `Got it — I'll snap that on my next break and upload to the tracker.`
+      }), 900);
+      setTimeout(() => appendChatMessage({
+        party: 'dispatcher', tag: 'Photo request',
+        text: `Logged. If Kofi misses it within 30 min I'll chase him.`
+      }), 1900);
+      pmPostBestEffort('/api/bookings/' + currentBookingRef() + '/messages',
+        { kind: 'photo_request', spot, recipients: ['painter','admin'] });
+      document.getElementById('photoForm').reset();
+      pmToast('Photo request sent');
+    }
+
+    // ─────────────────────────────────────────────
+    // 2) Change scope. Posts a [Scope change request] tagged message, simulated
+    //    admin reply confirms the review window.
+    // ─────────────────────────────────────────────
+    let _impactChoice = 'small';
+    document.getElementById('impactPills').addEventListener('click', e => {
+      const b = e.target.closest('.impact-pill'); if (!b) return;
+      _impactChoice = b.dataset.impact;
+      document.querySelectorAll('#impactPills .impact-pill').forEach(p => p.classList.toggle('active', p === b));
+    });
+
+    function submitScopeChange(e) {
+      e.preventDefault();
+      const change = document.getElementById('scopeChange').value.trim();
+      if (!change) return;
+      const wantsBudget = document.getElementById('scopeWantsBudget').checked;
+      closeModal();
+      const impactLabel = ({ small: 'Small', medium: 'Medium', large: 'Large' })[_impactChoice] || 'Small';
+      emitActivity({ kind: 'scope_change', title: `Scope change · ${impactLabel} impact`, sub: change.slice(0, 140), severity: _impactChoice === 'large' ? 'warn' : 'info' });
+      appendChatMessage({
+        party: 'customer', tag: 'Scope change',
+        text: `${change}\n\n— Estimated impact: ${impactLabel}${wantsBudget ? '\n— I\'d like a revised quote first.' : ''}`
+      });
+      setTimeout(() => appendChatMessage({
+        party: 'admin', tag: 'Scope change',
+        text: `Thanks — admin will review with Kofi and reply within 1 hour with a revised quote and ETA. Your existing scope continues as planned in the meantime.`
+      }), 1200);
+      pmPostBestEffort('/api/bookings/' + currentBookingRef() + '/scope-change',
+        { change, impact: _impactChoice, wantsBudget });
+      document.getElementById('scopeForm').reset();
+      _impactChoice = 'small';
+      document.querySelectorAll('#impactPills .impact-pill').forEach((p, i) => p.classList.toggle('active', i === 0));
+      pmToast('Scope change submitted for approval');
+    }
+
+    // ─────────────────────────────────────────────
+    // 3) Leave a review. Star picker + before/after composer over existing
+    //    progress photos. Saves via pmReviews.
+    // ─────────────────────────────────────────────
+    let _starsChosen = 0;
+    let _baTags = {}; // { photoIndex: 'before' | 'after' }
+
+    document.getElementById('starsRow').addEventListener('click', e => {
+      const b = e.target.closest('.star-btn'); if (!b) return;
+      _starsChosen = Number(b.dataset.star);
+      paintStars(_starsChosen);
+      document.getElementById('reviewSubmit').disabled = (_starsChosen < 1);
+    });
+    document.getElementById('starsRow').addEventListener('mouseover', e => {
+      const b = e.target.closest('.star-btn'); if (!b) return;
+      paintStars(Number(b.dataset.star), /*hover=*/true);
+    });
+    document.getElementById('starsRow').addEventListener('mouseleave', () => paintStars(_starsChosen));
+
+    function paintStars(n, hover = false) {
+      document.querySelectorAll('#starsRow .star-btn').forEach(btn => {
+        btn.classList.toggle('active', Number(btn.dataset.star) <= n);
+      });
+      const labels = ['Tap a star', 'Bad', 'Could be better', 'OK', 'Good', 'Excellent'];
+      document.getElementById('starLabel').textContent = labels[n] + (hover && n > 0 ? '…' : '');
+    }
+
+    function populateReviewModal() {
+      // Refresh artisan card from current booking (in case it changes).
+      const artisanName = document.querySelector('#dService') ? null : null; // placeholder
+      // The painter info is already in #dService etc. Pull what we have:
+      const painterStrong = document.querySelector('.avatar + div strong');
+      if (painterStrong) {
+        document.getElementById('reviewArtisanName').textContent = painterStrong.textContent || 'Your Paint Master';
+      }
+      // Pull progress photos (from PHOTO_KEY) into the before/after composer.
+      const photos = loadPhotos();
+      const grid = document.getElementById('baGrid');
+      if (!photos.length) {
+        grid.innerHTML = `<p class="small" style="grid-column:1/-1;color:var(--ink-500);margin:0;">No progress photos uploaded yet — your review can still go through, but before/after pairs help future customers a lot.</p>`;
+        return;
+      }
+      grid.innerHTML = photos.map((p, i) => `
+        <div class="ba-tile" data-i="${i}" style="background-image:url('${p.data}');" title="${(p.name || 'Photo').replace(/"/g,'&quot;')}"></div>
+      `).join('');
+      _baTags = {};
+      grid.querySelectorAll('.ba-tile').forEach(tile => {
+        tile.addEventListener('click', () => cycleBA(tile));
+      });
+    }
+
+    function cycleBA(tile) {
+      const i = Number(tile.dataset.i);
+      const cur = _baTags[i];
+      const next = cur === 'before' ? 'after' : (cur === 'after' ? null : 'before');
+      if (next === null) delete _baTags[i]; else _baTags[i] = next;
+      tile.classList.remove('before', 'after');
+      tile.querySelector('.ba-tag')?.remove();
+      if (next) {
+        tile.classList.add(next);
+        const tag = document.createElement('span');
+        tag.className = 'ba-tag';
+        tag.textContent = next === 'before' ? 'BEFORE' : 'AFTER';
+        tag.style.background = next === 'before' ? 'var(--blue)' : 'var(--green)';
+        tile.appendChild(tag);
+      }
+    }
+
+    function submitReview(e) {
+      e.preventDefault();
+      if (_starsChosen < 1) return;
+      const comment = document.getElementById('reviewComment').value.trim();
+      const photos = loadPhotos();
+      const beforePhotos = [], afterPhotos = [];
+      Object.entries(_baTags).forEach(([i, kind]) => {
+        const p = photos[Number(i)];
+        if (!p) return;
+        (kind === 'before' ? beforePhotos : afterPhotos).push(p.data);
+      });
+      const ref = currentBookingRef();
+      const painterName = document.getElementById('reviewArtisanName').textContent || 'Your Paint Master';
+      const result = pmReviews.save({
+        bookingRef:   ref,
+        painterName,
+        rating:       _starsChosen,
+        comment,
+        beforePhotos, afterPhotos
+      });
+      pmPostBestEffort('/api/reviews', { bookingRef: ref, rating: _starsChosen, comment });
+      emitActivity({
+        kind: 'review',
+        title: `${_starsChosen}-star review for ${painterName}`,
+        sub: comment ? `"${comment.slice(0, 140)}${comment.length > 140 ? '…' : ''}"` : 'No comment',
+        severity: _starsChosen <= 2 ? 'warn' : 'info'
+      });
+      closeModal();
+      appendChatMessage({
+        party: 'customer', tag: 'Review',
+        text: `Posted a ${_starsChosen}-star review${comment ? `: "${comment.slice(0, 140)}${comment.length > 140 ? '…' : ''}"` : '.'}`
+      });
+      setTimeout(() => appendChatMessage({
+        party: 'admin', tag: 'Review',
+        text: `Thanks for the review — Kofi will see it. Future customers picking a Master rely on these.`
+      }), 900);
+      // Lock the button so it can't be re-submitted in this session.
+      const btn = document.getElementById('btnLeaveReview');
+      if (btn) {
+        btn.textContent = `★ Review submitted (${_starsChosen}/5)`;
+        btn.disabled = true;
+        btn.style.color   = 'var(--green)';
+        btn.style.borderColor = 'var(--green)';
+        btn.style.opacity = '0.85';
+        btn.style.cursor  = 'default';
+      }
+      pmToast(result === 'rating-only' ? 'Review saved (photos too large)' : 'Thanks for the review!');
+    }
+
+    // ─────────────────────────────────────────────
+    // 4) Report a concern. Posts a red [Concern] tagged message, simulates
+    //    a senior dispatcher acknowledgement.
+    // ─────────────────────────────────────────────
+    function submitConcern(e) {
+      e.preventDefault();
+      const cat  = document.getElementById('concernCategory').value;
+      const desc = document.getElementById('concernDesc').value.trim();
+      const cb   = document.getElementById('concernCallback').checked;
+      if (!cat || !desc) return;
+      closeModal();
+      const catLabel = ({
+        quality: 'Quality of work', safety: 'Safety on site',
+        behaviour: 'Master\'s behaviour', property: 'Property damage', other: 'Something else'
+      })[cat] || cat;
+      emitActivity({
+        kind: 'concern',
+        title: `Concern raised · ${catLabel}`,
+        sub: desc.slice(0, 160) + (cb ? ' (callback requested)' : ''),
+        severity: cat === 'safety' || cat === 'property' ? 'error' : 'warn'
+      });
+      appendChatMessage({
+        party: 'customer', tag: 'Concern', danger: true, tagKind: 'concern',
+        text: `[${catLabel}] ${desc}${cb ? '\n\n— Please call me back within an hour.' : ''}`
+      });
+      setTimeout(() => appendChatMessage({
+        party: 'admin', tag: 'Concern', tagKind: 'concern',
+        text: cb
+          ? `Logged as a high-priority concern. A senior dispatcher will call you within 60 minutes.`
+          : `Logged as a high-priority concern. We'll investigate and get back to you within 2 hours.`
+      }), 900);
+      pmPostBestEffort('/api/reports/concern',
+        { bookingRef: currentBookingRef(), category: cat, description: desc, callback: cb });
+      document.getElementById('concernForm').reset();
+      pmToast('Concern reported');
+    }
+
+    // ─────────────────────────────────────────────
+    // Helpers used by all four handlers.
+    // ─────────────────────────────────────────────
+    function currentBookingRef() {
+      return (document.getElementById('tRef')?.textContent || '').trim() || 'PM-000000';
+    }
+
+    /**
+     * Open the warranty certificate page for the current booking. Customer
+     * lands on warranty.html?ref=<ref>; the page picks the booking out of
+     * pm_booking_v1 and renders the cert with a Print → Save as PDF button.
+     */
+    function openWarrantyCert() {
+      const ref = currentBookingRef();
+      window.open(`warranty.html?ref=${encodeURIComponent(ref)}`, '_blank', 'noopener');
+    }
+    function pmPostBestEffort(path, body) {
+      try {
+        if (typeof fetch !== 'function') return;
+        const headers = { 'Content-Type': 'application/json' };
+        // Pull JWT if pmAuth has one, so the backend can attribute the message.
+        const tok = (typeof pmAuth !== 'undefined' && pmAuth.token) ? pmAuth.token() : null;
+        if (tok) headers.Authorization = `Bearer ${tok}`;
+        fetch(path, { method: 'POST', headers, body: JSON.stringify(body) })
+          .catch(() => { /* silent — backend may not have the endpoint yet */ });
+      } catch (e) { /* silent */ }
+    }
+
+    /**
+     * Emit a customer-side activity event onto the cross-tab pmActivity bus.
+     * Admin sees it immediately in the bell + Live activity panel. Bookings
+     * are tagged with the customer's name and the booking ref so dispatch
+     * knows which job and which customer the event belongs to.
+     */
+    function emitActivity({ kind, title, sub = '', severity = 'info' } = {}) {
+      if (typeof pmActivity === 'undefined') return;
+      const ref = currentBookingRef();
+      const customerName = (typeof me !== 'undefined' && me && me.name) ? me.name : 'Customer';
+      pmActivity.emit({
+        kind, title, severity,
+        sub: ref ? `${ref}${sub ? ' — ' + sub : ''}` : sub,
+        source: { role: 'customer', name: customerName }
+      });
+    }
+  </script>
+</body>
+</html>

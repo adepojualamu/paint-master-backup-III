@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" type="image/png" href="assets/img/favicon.png" />
+  <title>Settings — Paint Master</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/styles.css" />
+  <style>
+    /* Painter settings — same visual language as painter.html so navigating
+       between dashboard and settings feels seamless. */
+    .ps-hero {
+      background:
+        radial-gradient(900px 400px at 90% 0%, rgba(46,93,58,0.18), transparent 60%),
+        linear-gradient(180deg, #F7FAFD 0%, #FFFFFF 90%);
+      padding: 48px 24px 22px;
+    }
+    .ps-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: start; }
+    @media (max-width: 880px) { .ps-grid { grid-template-columns: 1fr; } }
+    .panel { background: #fff; border: 1px solid var(--ink-100); border-radius: 14px; padding: 22px 24px; }
+    .panel + .panel { margin-top: 16px; }
+    .panel h3 { margin: 0 0 4px; }
+    .panel .lede { color: var(--ink-500); font-size: 0.92rem; margin: 0 0 14px; }
+    .field { margin-bottom: 14px; }
+    .field label { display: block; font-size: 0.82rem; font-weight: 600; color: var(--ink-700); margin-bottom: 6px; }
+    .field input {
+      width: 100%; padding: 11px 14px; border: 1.5px solid var(--ink-300);
+      border-radius: 10px; font-size: 0.94rem; font-family: inherit; background: #fff;
+    }
+    .field input:focus { outline: 0; border-color: var(--navy-700); box-shadow: 0 0 0 4px rgba(46,112,201,0.10); }
+    .field input[disabled] { background: var(--ink-50); color: var(--ink-700); cursor: not-allowed; }
+    .field .hint { font-size: 0.78rem; color: var(--ink-500); margin-top: 5px; }
+    .alert { padding: 10px 14px; border-radius: 9px; margin-bottom: 14px; font-size: 0.88rem; display: none; }
+    .alert.show { display: block; }
+    .alert.err  { background: #FEE2E2; color: #991B1B; border: 1px solid #FCA5A5; }
+    .alert.ok   { background: #D1FAE5; color: #065F46; border: 1px solid #6EE7B7; }
+    .pw-strength {
+      display: flex; gap: 4px; margin-top: 8px;
+    }
+    .pw-strength .bar { flex: 1; height: 4px; background: var(--ink-100); border-radius: 999px; }
+    .pw-strength.s1 .bar:nth-child(1) { background: var(--red); }
+    .pw-strength.s2 .bar:nth-child(-n+2) { background: var(--orange); }
+    .pw-strength.s3 .bar:nth-child(-n+3) { background: var(--gold-500); }
+    .pw-strength.s4 .bar { background: var(--green); }
+    .info-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--ink-100); font-size: 0.92rem; }
+    .info-row:last-child { border-bottom: 0; }
+    .info-row span { color: var(--ink-500); }
+    .info-row strong { color: var(--navy-900); }
+  </style>
+</head>
+<body>
+  <div id="pm-nav"></div>
+
+  <!-- Painter-only gate. Customers + admins go elsewhere. -->
+  <script src="assets/shared.js"></script>
+  <script>
+    const me = pmRequireAuth({ roles: ['painter'] });
+  </script>
+
+  <section class="ps-hero">
+    <div class="container">
+      <span class="eyebrow">Paint Master settings</span>
+      <h1 style="margin:6px 0 6px;" id="psTitle">Your settings.</h1>
+      <p class="lede" style="color:var(--ink-700);max-width:580px;">Update your profile and rotate your password whenever you need to. Changes apply immediately.</p>
+    </div>
+  </section>
+
+  <section class="section" style="padding-top:24px;padding-bottom:60px;">
+    <div class="container">
+      <div class="ps-grid">
+
+        <!-- Left: profile + change password -->
+        <div>
+          <div class="panel">
+            <h3>Your profile</h3>
+            <p class="lede">Phone number is your sign-in — only an admin can change it. Tell dispatch if you need it updated.</p>
+            <div class="info-row"><span>Name</span><strong id="prfName">—</strong></div>
+            <div class="info-row"><span>Phone</span><strong id="prfPhone">—</strong></div>
+            <div class="info-row"><span>Email</span><strong id="prfEmail">—</strong></div>
+            <div class="info-row"><span>Region</span><strong id="prfRegion">—</strong></div>
+            <div class="info-row"><span>Role</span><strong>Paint Master</strong></div>
+          </div>
+
+          <div class="panel">
+            <h3>Change password</h3>
+            <p class="lede">Pick something only you'd remember. Six characters minimum — a phrase plus a digit is easier than a random string.</p>
+
+            <div class="alert err" id="pwErr"></div>
+            <div class="alert ok"  id="pwOk"></div>
+
+            <form id="pwForm" novalidate>
+              <div class="field">
+                <label for="curPwd">Current password</label>
+                <input id="curPwd" type="password" autocomplete="current-password" required />
+              </div>
+              <div class="field">
+                <label for="newPwd">New password</label>
+                <input id="newPwd" type="password" autocomplete="new-password" required minlength="6" />
+                <div class="pw-strength" id="pwStrength"><span class="bar"></span><span class="bar"></span><span class="bar"></span><span class="bar"></span></div>
+                <div class="hint" id="pwHint">At least 6 characters.</div>
+              </div>
+              <div class="field">
+                <label for="confirmPwd">Confirm new password</label>
+                <input id="confirmPwd" type="password" autocomplete="new-password" required />
+              </div>
+              <button type="submit" class="btn btn-gold btn-block" id="pwSubmit" style="padding:12px;">Update password</button>
+            </form>
+          </div>
+        </div>
+
+        <!-- Right: notification preferences + sign-out -->
+        <div>
+          <div class="panel">
+            <h3>Notification preferences</h3>
+            <p class="lede">Where the platform sends you updates about jobs assigned, dispatched, and customer messages.</p>
+            <label style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--ink-100);">
+              <div>
+                <strong style="display:block;color:var(--navy-900);">In-platform notifications</strong>
+                <small style="color:var(--ink-500);font-size:0.82rem;">Land in your dashboard's bell + notifications panel.</small>
+              </div>
+              <input type="checkbox" id="prefInApp" checked />
+            </label>
+            <label style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--ink-100);">
+              <div>
+                <strong style="display:block;color:var(--navy-900);">SMS for new assignments</strong>
+                <small style="color:var(--ink-500);font-size:0.82rem;">Hubtel SMS to your phone for every new job admin assigns to you.</small>
+              </div>
+              <input type="checkbox" id="prefSms" checked />
+            </label>
+            <label style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;">
+              <div>
+                <strong style="display:block;color:var(--navy-900);">WhatsApp for urgent messages</strong>
+                <small style="color:var(--ink-500);font-size:0.82rem;">Customer concerns, scope changes, cash-request reports.</small>
+              </div>
+              <input type="checkbox" id="prefWa" />
+            </label>
+            <button class="btn btn-outline btn-block mt-16" onclick="saveNotificationPrefs()" style="padding:10px;">Save notification preferences</button>
+          </div>
+
+          <div class="panel" style="background:linear-gradient(135deg,var(--navy-900),var(--navy-700));color:#fff;border-color:transparent;">
+            <h3 style="color:#fff;margin:0 0 6px;">Help &amp; support</h3>
+            <p style="color:rgba(255,255,255,0.85);font-size:0.92rem;margin:0 0 14px;">Locked out, customer issue, payment query — dispatch is on call Mon–Sat 7am–8pm.</p>
+            <a class="btn btn-gold btn-block" href="https://wa.me/233540000000" target="_blank" rel="noopener" style="padding:10px;">💬 WhatsApp dispatch</a>
+            <a class="btn btn-block mt-12" href="tel:+233540000000" style="background:rgba(255,255,255,0.12);color:#fff;border:1px solid rgba(255,255,255,0.3);padding:10px;">📞 Call +233 54 000 0000</a>
+          </div>
+
+          <div class="panel">
+            <h3 style="color:var(--red);">Sign out</h3>
+            <p class="lede">End your session on this device. You'll need to sign in again next time.</p>
+            <button class="btn btn-outline btn-block" id="signOutBtn" style="padding:10px;color:var(--red);border-color:var(--red);">Sign out</button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <div id="pm-footer"></div>
+
+  <script>
+    pmMountLayout();
+
+    // Profile read-only view.
+    if (me) {
+      const first = (me.name || '').split(' ')[0] || 'there';
+      document.getElementById('psTitle').textContent = `Your settings, ${first}.`;
+      document.getElementById('prfName').textContent   = me.name   || '—';
+      document.getElementById('prfPhone').textContent  = me.phone  || '—';
+      document.getElementById('prfEmail').textContent  = me.email  || '—';
+      document.getElementById('prfRegion').textContent = me.region || '—';
+    }
+
+    // ─────────────────────────────────────────────
+    // Password change form. Reuses pmAuth.changePassword which already does
+    // the right thing — updates pmUsers (the local store), best-effort PUTs
+    // /api/auth/password, and clears mustChangePassword on the cached
+    // session. Three-field form: current + new + confirm.
+    // ─────────────────────────────────────────────
+    const errBox = document.getElementById('pwErr');
+    const okBox  = document.getElementById('pwOk');
+
+    function setStrength(pwd) {
+      let score = 0;
+      if (pwd.length >= 6)  score++;
+      if (pwd.length >= 10) score++;
+      if (/[A-Z]/.test(pwd) && /[a-z]/.test(pwd)) score++;
+      if (/\d/.test(pwd) && /[^A-Za-z0-9]/.test(pwd)) score++;
+      const bar = document.getElementById('pwStrength');
+      bar.classList.remove('s1','s2','s3','s4');
+      if (score) bar.classList.add('s' + score);
+      const hint = document.getElementById('pwHint');
+      hint.textContent = ['At least 6 characters.','Weak — try a longer phrase.','OK.','Good.','Strong.'][score];
+      hint.style.color = score >= 3 ? 'var(--green)' : (score === 0 ? 'var(--ink-500)' : 'var(--orange)');
+    }
+    document.getElementById('newPwd').addEventListener('input', e => setStrength(e.target.value));
+
+    document.getElementById('pwForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      errBox.classList.remove('show');
+      okBox.classList.remove('show');
+      const cur     = document.getElementById('curPwd').value;
+      const newPwd  = document.getElementById('newPwd').value;
+      const confirm = document.getElementById('confirmPwd').value;
+      if (!cur)                 { showErr('Enter your current password.'); return; }
+      if (newPwd.length < 6)    { showErr('New password must be at least 6 characters.'); return; }
+      if (newPwd === cur)       { showErr('New password must be different from your current one.'); return; }
+      if (newPwd !== confirm)   { showErr('New password and confirmation don\'t match.'); return; }
+
+      const btn = document.getElementById('pwSubmit');
+      btn.disabled = true; btn.textContent = 'Saving…';
+      const result = await pmAuth.changePassword({ currentPassword: cur, newPassword: newPwd });
+      btn.disabled = false; btn.textContent = 'Update password';
+      if (!result.ok) { showErr(result.error || 'Could not change password.'); return; }
+      // Success.
+      okBox.textContent = 'Password updated. Use it next time you sign in.';
+      okBox.classList.add('show');
+      document.getElementById('pwForm').reset();
+      setStrength('');
+      if (typeof pmActivity !== 'undefined') {
+        pmActivity.emit({
+          kind: 'system',
+          title: `${me.name} changed their password`,
+          source: { role: 'painter', name: me.name }
+        });
+      }
+    });
+    function showErr(msg) { errBox.textContent = msg; errBox.classList.add('show'); }
+
+    // Notification prefs — saved per-painter to localStorage, mirrored to
+    // the backend best-effort. The pmComms / pmActivity layers will read
+    // these once the wire-up ships; today they're stored only.
+    const PREFS_KEY = 'pm_painter_prefs_v1';
+    function loadPrefs() { try { return JSON.parse(localStorage.getItem(PREFS_KEY) || '{}'); } catch (e) { return {}; } }
+    function savePrefs(p) { try { localStorage.setItem(PREFS_KEY, JSON.stringify(p)); } catch (e) {} }
+    (function hydratePrefs() {
+      const p = loadPrefs();
+      if (p.inApp != null) document.getElementById('prefInApp').checked = !!p.inApp;
+      if (p.sms   != null) document.getElementById('prefSms').checked   = !!p.sms;
+      if (p.wa    != null) document.getElementById('prefWa').checked    = !!p.wa;
+    })();
+    function saveNotificationPrefs() {
+      savePrefs({
+        inApp: document.getElementById('prefInApp').checked,
+        sms:   document.getElementById('prefSms').checked,
+        wa:    document.getElementById('prefWa').checked,
+      });
+      try {
+        fetch('/api/painters/me/preferences', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (pmAuth.token() || '') },
+          body: JSON.stringify(loadPrefs())
+        }).catch(() => {});
+      } catch (e) {}
+      // Visual confirmation.
+      const btn = event && event.target ? event.target : null;
+      if (btn) { btn.textContent = '✓ Saved'; setTimeout(() => btn.textContent = 'Save notification preferences', 1400); }
+    }
+
+    document.getElementById('signOutBtn').addEventListener('click', () => {
+      if (!confirm('Sign out of Paint Masters on this device?')) return;
+      if (typeof pmAuth !== 'undefined' && pmAuth.logout) pmAuth.logout();
+      location.href = 'login.html';
+    });
+  </script>
+</body>
+</html>

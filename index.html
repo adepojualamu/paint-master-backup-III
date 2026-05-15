@@ -1,0 +1,610 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" type="image/png" href="assets/img/favicon.png" />
+  <title>Paint Masters — Not Just a Painter. A Paint Master.</title>
+  <meta name="description" content="Ghana's first professional painting agency. Instant quotes, certified Paint Masters, and a 12-month warranty on every finish." />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/styles.css" />
+  <style>
+    /* ===========================================================
+       Hero brand slider — fills the .hero-visual square on index.html.
+       Slides crossfade; admin Settings → Branding edits the slide list,
+       which is persisted in localStorage under pm_hero_slides_v1.
+       Falls back to the seeded DEFAULT_HERO_SLIDES below.
+       =========================================================== */
+    .hero-slider {
+      /* Inherits .hero-visual sizing (1:1 aspect, rounded corners) */
+      position: relative;
+    }
+    .hero-slider .slides {
+      list-style: none; margin: 0; padding: 0;
+      position: absolute; inset: 0;
+    }
+    .hero-slider .slides li {
+      position: absolute; inset: 0;
+      opacity: 0; transition: opacity 600ms ease;
+      display: grid; place-items: center;
+      background: var(--white);
+    }
+    .hero-slider .slides li.active { opacity: 1; }
+    .hero-slider .slides img {
+      width: 100%; height: 100%; object-fit: cover; display: block;
+    }
+    .hero-slider .slides .placeholder {
+      width: 100%; height: 100%;
+      display: grid; place-items: center;
+      background: linear-gradient(135deg, var(--navy-700), var(--gold-500));
+      color: #fff; font-family: var(--font-display); font-size: 1.6rem;
+      letter-spacing: 0.05em;
+    }
+
+    /* Caption — bottom gradient overlay with brand + tagline */
+    .slider-caption {
+      position: absolute; left: 0; right: 0; bottom: 0;
+      padding: 28px 24px 22px;
+      background: linear-gradient(180deg, rgba(11,31,58,0) 0%, rgba(11,31,58,0.85) 100%);
+      color: #fff; pointer-events: none;
+      transition: opacity 300ms ease;
+    }
+    .slider-caption strong { display: block; font-family: var(--font-display); font-size: 1.4rem; font-weight: 700; }
+    .slider-caption small  { color: rgba(255,255,255,0.82); font-size: 0.92rem; line-height: 1.4; }
+    .slider-caption a { pointer-events: auto; color: var(--gold-500); font-weight: 600; font-size: 0.85rem; margin-top: 6px; display: inline-block; }
+
+    /* Prev/next arrows */
+    .slider-arrow {
+      position: absolute; top: 50%; transform: translateY(-50%);
+      width: 42px; height: 42px; border-radius: 50%;
+      background: rgba(255,255,255,0.92); color: var(--navy-900);
+      font-size: 1.6rem; font-weight: 700; line-height: 1;
+      display: grid; place-items: center; cursor: pointer;
+      box-shadow: 0 4px 14px rgba(11,31,58,0.18);
+      transition: background 0.15s, transform 0.15s;
+    }
+    .slider-arrow:hover { background: #fff; transform: translateY(-50%) scale(1.05); }
+    .slider-arrow.prev { left: 14px; }
+    .slider-arrow.next { right: 14px; }
+
+    /* Dot indicators */
+    .slider-dots {
+      position: absolute; left: 0; right: 0; bottom: 14px;
+      list-style: none; margin: 0; padding: 0;
+      display: flex; gap: 6px; justify-content: center; z-index: 2;
+    }
+    .slider-dots button {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: rgba(255,255,255,0.55); border: 0; padding: 0; cursor: pointer;
+      transition: background 0.15s, transform 0.15s;
+    }
+    .slider-dots button.active { background: var(--gold-500); transform: scale(1.3); }
+    .slider-dots button:hover { background: rgba(255,255,255,0.9); }
+
+    /* Top-left "Trusted partner" eyebrow that sits over the slide */
+    .slider-eyebrow {
+      position: absolute; top: 16px; left: 16px; z-index: 2;
+      background: rgba(255,255,255,0.92); color: var(--navy-900);
+      padding: 6px 12px; border-radius: 999px;
+      font-size: 0.72rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+      box-shadow: 0 2px 8px rgba(11,31,58,0.12);
+    }
+
+    /* Show the slider on mobile too — it's a nice brand cue.
+       (.hero-visual is hidden <900px by default; we override here.) */
+    @media (max-width: 900px) {
+      .hero-visual.hero-slider { display: block; aspect-ratio: 4 / 3; margin-top: 24px; }
+      .slider-arrow { width: 36px; height: 36px; font-size: 1.4rem; }
+      .slider-caption { padding: 20px 18px 30px; }
+      .slider-caption strong { font-size: 1.15rem; }
+    }
+
+    /* ===========================================================
+       Caparol feature section — sits above the trusted-partners
+       grid. Single full-width card with hero copy on the left and
+       a 3-image showcase strip on the right. Click any image goes
+       to the Caparol brand page.
+       =========================================================== */
+    .caparol-feature {
+      max-width: var(--container); margin: 0 auto; padding: 0 24px;
+    }
+    .caparol-feature-card {
+      position: relative;
+      background:
+        radial-gradient(900px 400px at 90% -10%, rgba(140,205,86,0.18), transparent 60%),
+        linear-gradient(180deg, #ffffff, #f6faf2);
+      border: 1px solid var(--ink-100);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      display: grid; grid-template-columns: 1.05fr 1fr; gap: 0;
+    }
+    @media (max-width: 880px) { .caparol-feature-card { grid-template-columns: 1fr; } }
+
+    .caparol-feature-copy { padding: 40px 36px 36px; display:flex; flex-direction:column; justify-content:center; }
+    .caparol-feature-eyebrow {
+      display:inline-flex; align-items:center; gap: 8px;
+      background: linear-gradient(135deg,var(--gold-500),var(--gold-400));
+      color: var(--navy-900); font-size: 0.66rem; font-weight: 800; letter-spacing: 0.14em;
+      text-transform: uppercase; padding: 5px 12px; border-radius: 999px;
+      width: max-content; box-shadow: 0 2px 6px rgba(11,31,58,0.12);
+    }
+    .caparol-feature-copy h2 {
+      margin: 14px 0 10px;
+      font-family: var(--font-display); font-size: 2rem; line-height: 1.15; color: var(--navy-900);
+    }
+    .caparol-feature-copy h2 .caparol-word { color: #5a8a2e; }
+    .caparol-feature-copy p { color: var(--ink-700); margin: 0 0 18px; max-width: 50ch; line-height: 1.6; }
+    .caparol-feature-bullets {
+      display:flex; flex-wrap:wrap; gap: 10px 22px; margin: 0 0 22px;
+      list-style: none; padding: 0;
+    }
+    .caparol-feature-bullets li {
+      display:flex; align-items:center; gap: 8px;
+      font-size: 0.92rem; color: var(--navy-900); font-weight: 600;
+    }
+    .caparol-feature-bullets li::before {
+      content: ""; width: 8px; height: 8px; border-radius: 999px;
+      background: #5a8a2e; flex-shrink: 0;
+    }
+    .caparol-feature-ctas { display:flex; gap:12px; flex-wrap:wrap; }
+
+    .caparol-feature-visual { position: relative; min-height: 360px; }
+    .caparol-feature-strip {
+      position: absolute; inset: 0; padding: 24px;
+      display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr;
+      gap: 12px;
+    }
+    .caparol-feature-strip a {
+      display: block; border-radius: var(--radius);
+      overflow: hidden; background: #eef3ea; position: relative;
+      box-shadow: 0 8px 18px rgba(11,31,58,0.08);
+      transition: transform 0.18s, box-shadow 0.18s;
+    }
+    .caparol-feature-strip a:hover { transform: translateY(-3px); box-shadow: 0 16px 30px rgba(11,31,58,0.16); }
+    .caparol-feature-strip a:nth-child(1) { grid-row: 1 / 3; }
+    .caparol-feature-strip img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .caparol-feature-strip .label {
+      position: absolute; left: 10px; bottom: 10px;
+      background: rgba(11,31,58,0.85); color: #fff;
+      font-size: 0.7rem; font-weight: 700; letter-spacing: 0.06em;
+      padding: 4px 8px; border-radius: 6px;
+    }
+    @media (max-width: 880px) {
+      .caparol-feature-visual { min-height: 280px; }
+    }
+  </style>
+</head>
+<body>
+  <div id="pm-nav"></div>
+
+  <!-- HERO -->
+  <section class="hero">
+    <!-- Decorative paint splatter — inline SVG so we don't carry a binary asset.
+         Uses brand colors (red/gold/green) at low opacity so it reads as
+         texture, not foreground. Sits behind the hero content via z-index. -->
+    <svg class="hero-splatter" viewBox="0 0 600 600" aria-hidden="true">
+      <g opacity="0.42">
+        <circle cx="120" cy="80"  r="46" fill="#F5B800"/>
+        <circle cx="78"  cy="180" r="14" fill="#F5B800"/>
+        <circle cx="210" cy="60"  r="9"  fill="#D7263D"/>
+        <ellipse cx="180" cy="160" rx="34" ry="22" transform="rotate(20 180 160)" fill="#D7263D"/>
+        <circle cx="430" cy="120" r="62" fill="#1E7F4F"/>
+        <circle cx="510" cy="220" r="18" fill="#1E7F4F"/>
+        <circle cx="370" cy="50"  r="11" fill="#2E70C9"/>
+        <ellipse cx="500" cy="380" rx="48" ry="30" transform="rotate(-15 500 380)" fill="#F5B800"/>
+        <circle cx="380" cy="430" r="22" fill="#D7263D"/>
+        <circle cx="450" cy="500" r="9"  fill="#1E7F4F"/>
+        <circle cx="80"  cy="430" r="38" fill="#2E70C9"/>
+        <circle cx="40"  cy="520" r="15" fill="#EA7317"/>
+        <ellipse cx="240" cy="520" rx="28" ry="18" transform="rotate(35 240 520)" fill="#1E7F4F"/>
+        <circle cx="320" cy="280" r="12" fill="#F5B800"/>
+        <circle cx="160" cy="320" r="8"  fill="#D7263D"/>
+      </g>
+    </svg>
+
+    <div class="hero-inner">
+      <div>
+        <span class="eyebrow">🇬🇭 Proudly Made in Ghana</span>
+        <h1 style="margin-top:18px;">
+          Not just a painter.<br/>
+          <strong>A Paint Master.</strong>
+        </h1>
+        <p class="hero-sub">
+          Tell us the room. Get an instant quote. A certified Paint Master shows up on schedule,
+          protects your furniture, and leaves you with a finish that's <em>guaranteed for 12 months</em>.
+        </p>
+        <div class="hero-cta">
+          <a href="quote.html" class="btn btn-gold btn-lg">Get Instant Quote →</a>
+          <a href="services.html" class="btn btn-outline btn-lg">Browse Services</a>
+        </div>
+        <div class="hero-trust">
+          <div class="trust-item"><span class="dot"></span> 4.9 avg rating · 1,200+ jobs</div>
+          <div class="trust-item"><span class="dot"></span> Escrow-protected payments</div>
+          <div class="trust-item"><span class="dot"></span> 12-month finish warranty</div>
+        </div>
+      </div>
+
+      <!-- Hero brand slider — admin-editable from Settings → Branding.
+           Slides come from localStorage (pm_hero_slides_v1) or, on first
+           visit, from DEFAULT_HERO_SLIDES below. -->
+      <div class="hero-visual hero-slider" id="heroSlider"
+           aria-roledescription="carousel" aria-label="Trusted paint brand partners">
+        <span class="slider-eyebrow">Trusted Brands</span>
+        <ul class="slides" id="heroSlideTrack" aria-live="polite"></ul>
+        <button type="button" class="slider-arrow prev" id="heroPrev" aria-label="Previous slide">‹</button>
+        <button type="button" class="slider-arrow next" id="heroNext" aria-label="Next slide">›</button>
+        <div class="slider-caption" id="heroCaption" aria-hidden="false"></div>
+        <div class="slider-dots" id="heroDots" role="tablist"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- TRUST BAR -->
+  <section class="section-sm" style="background:var(--navy-900);">
+    <div class="container">
+      <div class="stats">
+        <div class="stat"><div class="num">1,200+</div><div class="lbl">Projects completed</div></div>
+        <div class="stat"><div class="num">4.9★</div><div class="lbl">Avg. customer rating</div></div>
+        <div class="stat"><div class="num">&lt;5 min</div><div class="lbl">Average booking time</div></div>
+        <div class="stat"><div class="num">12 month</div><div class="lbl">Finish warranty</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- WHY US -->
+  <section class="section">
+    <div class="container">
+      <div class="section-head">
+        <span class="eyebrow">The Paint Masters difference</span>
+        <h2 class="mt-16">Painters you can't find on a street corner</h2>
+        <p>We're not a freelance marketplace. Every Paint Master is company-trained, background-checked, and backed by our quality guarantee.</p>
+      </div>
+
+      <div class="grid grid-3">
+        <div class="card">
+          <div style="width:44px;height:44px;border-radius:12px;background:var(--gold-100);display:grid;place-items:center;font-size:1.4rem;">🎓</div>
+          <h3 class="mt-16">Certified Masters</h3>
+          <p>Every artisan completes a 6-week Paint Masters training program. Specializations: roller, brush, spray, faux finishes, lime wash, and more.</p>
+        </div>
+        <div class="card">
+          <div style="width:44px;height:44px;border-radius:12px;background:rgba(215,38,61,0.10);display:grid;place-items:center;font-size:1.4rem;">🛡️</div>
+          <h3 class="mt-16">12-Month Warranty</h3>
+          <p>If your finish peels, blisters, or chalks within a year, we redo it. No questions, no extra fees. That's the Paint Masters guarantee.</p>
+        </div>
+        <div class="card">
+          <div style="width:44px;height:44px;border-radius:12px;background:rgba(30,127,79,0.12);display:grid;place-items:center;font-size:1.4rem;">💳</div>
+          <h3 class="mt-16">Escrow-Protected</h3>
+          <p>Pay securely via Paystack or MTN MoMo. Your funds are held safely until the job passes our on-site QA inspection.</p>
+        </div>
+        <div class="card">
+          <div style="width:44px;height:44px;border-radius:12px;background:rgba(46,112,201,0.12);display:grid;place-items:center;font-size:1.4rem;">📱</div>
+          <h3 class="mt-16">Real-time Tracking</h3>
+          <p>Watch your project move from "Master Dispatched" to "Ready for QA" to "Complete" — with photos uploaded as the work progresses.</p>
+        </div>
+        <div class="card">
+          <div style="width:44px;height:44px;border-radius:12px;background:var(--gold-100);display:grid;place-items:center;font-size:1.4rem;">₵</div>
+          <h3 class="mt-16">Fixed Quotes</h3>
+          <p>Our algorithmic quote engine gives you a fair, itemised price in under 3 seconds. The quote you get is the price you pay.</p>
+        </div>
+        <div class="card">
+          <div style="width:44px;height:44px;border-radius:12px;background:rgba(234,115,23,0.12);display:grid;place-items:center;font-size:1.4rem;">🧹</div>
+          <h3 class="mt-16">Clean-As-We-Go</h3>
+          <p>Furniture protection, drop cloths, and a spotless site on handover. We paint like you'll be hosting guests the next day — because sometimes you are.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SERVICE CATEGORIES -->
+  <section class="section section-muted">
+    <div class="container">
+      <div class="section-head">
+        <span class="eyebrow">Services</span>
+        <h2 class="mt-16">From one wall to an entire estate</h2>
+        <p>Four specialised categories covering every painting need in Ghana — from a bedroom refresh to a full commercial rebrand.</p>
+      </div>
+
+      <div class="grid grid-4">
+        <a href="services.html#residential" class="card service-card green" style="display:block;">
+          <span class="bar"></span>
+          <span class="pill green">Residential</span>
+          <h3 class="mt-16">Homes & Apartments</h3>
+          <p>Interior walls, ceilings, exterior façades, trim, and doors. Built for Ghanaian family homes.</p>
+          <div class="price">From GHS 1,200 <small>/ room</small></div>
+        </a>
+        <a href="services.html#decorative" class="card service-card" style="display:block;">
+          <span class="bar"></span>
+          <span class="pill gold">Decorative</span>
+          <h3 class="mt-16">Feature & Finish Work</h3>
+          <p>Accent walls, faux finishes, textured concrete, lime wash, and bespoke colour mixing.</p>
+          <div class="price">From GHS 2,800 <small>/ wall</small></div>
+        </a>
+        <a href="services.html#commercial" class="card service-card blue" style="display:block;">
+          <span class="bar"></span>
+          <span class="pill blue">Commercial</span>
+          <h3 class="mt-16">Offices & Retail</h3>
+          <p>Branded interiors, storefronts, and full-building recoats. Scheduled for after-hours.</p>
+          <div class="price">From GHS 35 <small>/ m²</small></div>
+        </a>
+        <a href="services.html#specialty" class="card service-card red" style="display:block;">
+          <span class="bar"></span>
+          <span class="pill red">Specialty</span>
+          <h3 class="mt-16">Epoxy, Roof & Fence</h3>
+          <p>Epoxy floors, rust-proof roof coatings, waterproofing, fence/gate spray work.</p>
+          <div class="price">From GHS 55 <small>/ m²</small></div>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- CAPAROL FEATURE — anchor partner highlight. Sits above the brand grid
+       so Caparol is the first paint name a visitor reads after the hero. -->
+  <section class="section caparol-feature">
+    <div class="caparol-feature-card">
+      <div class="caparol-feature-copy">
+        <span class="caparol-feature-eyebrow">★ Anchor Partner · German engineered</span>
+        <h2>The full <span class="caparol-word">Caparol</span> range, finished by certified Paint Masters.</h2>
+        <p>From interior emulsions and zero-VOC eco lines to anti-carbonation façades, textured renders and natural stone finishes — Caparol's full product family is in stock and on our trucks. Every Caparol job carries our extended 18-month warranty.</p>
+        <ul class="caparol-feature-bullets">
+          <li>22 product lines stocked</li>
+          <li>Interior · Exterior · Texture</li>
+          <li>Zero-VOC &amp; anti-bacterial</li>
+          <li>18-month warranty</li>
+        </ul>
+        <div class="caparol-feature-ctas">
+          <a class="btn btn-primary" href="brand.html?brand=caparol">Browse the Caparol range →</a>
+          <a class="btn btn-ghost"   href="quote.html?brand=caparol">Get a Caparol quote</a>
+        </div>
+      </div>
+      <div class="caparol-feature-visual">
+        <div class="caparol-feature-strip">
+          <a href="brand.html?brand=caparol#caparol-products" aria-label="View CapaSuper interior emulsion">
+            <img src="assets/img/brands/caparol_paints/IMG_4668.JPG" alt="CapaSuper interior emulsion" loading="lazy" />
+            <span class="label">CapaSuper · Interior</span>
+          </a>
+          <a href="brand.html?brand=caparol#caparol-products" aria-label="View CapaUltra Matt exterior emulsion">
+            <img src="assets/img/brands/caparol_paints/IMG_4675.JPG" alt="CapaUltra Matt exterior emulsion" loading="lazy" />
+            <span class="label">CapaUltra · Exterior</span>
+          </a>
+          <a href="brand.html?brand=caparol#caparol-products" aria-label="View CapaStone Ceratile stone finish">
+            <img src="assets/img/brands/caparol_paints/IMG_4684.JPG" alt="CapaStone Ceratile stone finish" loading="lazy" />
+            <span class="label">Ceratile · Stone</span>
+          </a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- TRUSTED PAINT PARTNERS — populated by assets/paint-catalog.js.
+       Each card is a partner brand. Logos fall back to a styled wordmark
+       when the image file is missing, so the section never looks broken. -->
+  <section class="section">
+    <div class="container">
+      <div class="section-head">
+        <span class="eyebrow">Trusted paint partners</span>
+        <h2 class="mt-16">The brands we paint with</h2>
+        <p>Every Paint Masters job uses the right paint for the surface — sourced from manufacturers we've vetted, in finishes our masters are trained on.</p>
+      </div>
+
+      <div class="brand-grid" id="brandGrid"></div>
+
+      <div style="text-align:center;margin-top:28px;">
+        <a href="quote.html" class="btn btn-outline">Get a quote →</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- HOW IT WORKS -->
+  <section class="section">
+    <div class="container">
+      <div class="section-head">
+        <span class="eyebrow">How it works</span>
+        <h2 class="mt-16">Four steps from colour swatch to finished wall</h2>
+      </div>
+
+      <div class="steps">
+        <div class="step">
+          <h3 class="mt-0">Get your instant quote</h3>
+          <p>Tell us the room size, surface, and finish. Our engine gives you a fair, fixed price in seconds.</p>
+        </div>
+        <div class="step">
+          <h3 class="mt-0">Pick a start date</h3>
+          <p>See the dispatcher's live calendar. Book the slot that fits you, sign the digital contract, pay safely.</p>
+        </div>
+        <div class="step">
+          <h3 class="mt-0">Your Master shows up</h3>
+          <p>A certified Paint Master arrives on time with materials, protects your space, and does the work.</p>
+        </div>
+        <div class="step">
+          <h3 class="mt-0">QA, warranty, done</h3>
+          <p>Our QA team inspects every finish. Pay only on QA pass. Walk away with a 12-month warranty certificate.</p>
+        </div>
+      </div>
+
+      <div class="text-center mt-32">
+        <a href="quote.html" class="btn btn-primary btn-lg">Start with a quote →</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- TESTIMONIALS -->
+  <section class="section section-muted">
+    <div class="container">
+      <div class="section-head">
+        <span class="eyebrow">Stories from our customers</span>
+        <h2 class="mt-16">Loved by homeowners, property managers, and business owners</h2>
+      </div>
+
+      <div class="grid grid-3">
+        <div class="quote-card">
+          <div class="stars">★★★★★</div>
+          <p>"I booked from my phone during lunch break. The Master arrived the next Monday at 8am sharp. My living room looks better than new — and I didn't lift a finger."</p>
+          <div class="who">
+            <div class="avatar">NA</div>
+            <div>
+              <strong>Nana Adwoa</strong><br/>
+              <span class="small">Homeowner · East Legon</span>
+            </div>
+          </div>
+        </div>
+        <div class="quote-card">
+          <div class="stars">★★★★★</div>
+          <p>"We manage 32 apartments. Since moving to Paint Masters our turnaround between tenants dropped by five days and invoicing is finally sane. The dispatcher dashboard is a lifesaver."</p>
+          <div class="who">
+            <div class="avatar">KO</div>
+            <div>
+              <strong>Mr. Kwame Osei</strong><br/>
+              <span class="small">Property Manager · Cantonments</span>
+            </div>
+          </div>
+        </div>
+        <div class="quote-card">
+          <div class="stars">★★★★★</div>
+          <p>"We rebranded our retail shop in one weekend. They painted overnight so we didn't lose a day of sales. The colour match on our brand gold was perfect."</p>
+          <div class="who">
+            <div class="avatar">AM</div>
+            <div>
+              <strong>Ama Mensah</strong><br/>
+              <span class="small">SMB Owner · Osu</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section class="section section-dark" style="position:relative; overflow:hidden;">
+    <div class="splatter red" style="top:-100px; left:-40px;"></div>
+    <div class="splatter gold" style="bottom:-120px; right:-60px;"></div>
+    <div class="container" style="position:relative;">
+      <div style="max-width:720px;">
+        <h2>Ready for a finish you'll actually enjoy looking at?</h2>
+        <p style="font-size:1.1rem;">Quote in seconds. Booked in under 5 minutes. Painted by a Paint Master.</p>
+        <div class="hero-cta">
+          <a href="quote.html" class="btn btn-gold btn-lg">Get my instant quote →</a>
+          <a href="about.html" class="btn" style="background:transparent;color:#fff;border:1px solid rgba(255,255,255,0.3);">Learn about us</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div id="pm-footer"></div>
+  <script src="assets/shared.js"></script>
+  <script src="assets/paint-catalog.js"></script>
+  <script>
+    pmMountLayout('home');
+
+    // Render the trusted-partners brand showcase from assets/paint-catalog.js.
+    // The list lives there so non-engineers can edit it without touching markup.
+    const brandGrid = document.getElementById('brandGrid');
+    if (brandGrid) brandGrid.innerHTML = PM_BRAND_PARTNERS.map(pmRenderBrandPartner).join('');
+
+    // ─────────────────────────────────────────────
+    // Hero brand slider
+    // Source of truth: localStorage `pm_hero_slides_v1` (admin-edited).
+    // Falls back to DEFAULT_HERO_SLIDES on first load. The admin Settings
+    // page can swap images, captions, links, and ordering — and the
+    // `storage` event below picks up the change live in any open tab.
+    // ─────────────────────────────────────────────
+    const HERO_SLIDES_KEY = 'pm_hero_slides_v1';
+    // Slider points at brand.html?brand=<slug> — the per-brand landing page
+    // with story, paint catalog, and curated colour palette. paints.html
+    // (the all-brands browse view) is still reachable via the "Browse all
+    // paints" CTA on each brand page.
+    const DEFAULT_HERO_SLIDES = [
+      { src: 'assets/img/brands/caparol.png', alt: 'Caparol',  caption: 'Caparol',  sub: 'European-grade durability we trust on premium interiors.', href: 'brand.html?brand=caparol' },
+      { src: 'assets/img/brands/coral.png',   alt: 'Coral',    caption: 'Coral',    sub: 'Hot-climate engineered for Ghanaian humidity.',          href: 'brand.html?brand=coral'   },
+      { src: 'assets/img/brands/leyland.png', alt: 'Leyland',  caption: 'Leyland',  sub: 'Trade-trusted finish — easy to clean, easy to live with.', href: 'brand.html?brand=leyland' },
+      { src: 'assets/img/brands/shield.png',  alt: 'Shield',   caption: 'Shield',   sub: 'Premium long-life coatings for façades and roofs.',      href: 'brand.html?brand=shield'  },
+      { src: 'assets/img/brands/azar.png',    alt: 'Azar',     caption: 'Azar',     sub: 'A local champion — fully tested in our QA program.',     href: 'brand.html?brand=azar'    }
+    ];
+
+    function loadHeroSlides() {
+      try {
+        const raw = JSON.parse(localStorage.getItem(HERO_SLIDES_KEY) || 'null');
+        if (Array.isArray(raw) && raw.length) return raw;
+      } catch (e) {}
+      return DEFAULT_HERO_SLIDES;
+    }
+
+    const heroSlider = (() => {
+      const root    = document.getElementById('heroSlider');
+      const track   = document.getElementById('heroSlideTrack');
+      const dotsHost= document.getElementById('heroDots');
+      const caption = document.getElementById('heroCaption');
+      const prevBtn = document.getElementById('heroPrev');
+      const nextBtn = document.getElementById('heroNext');
+      let slides = [];
+      let idx = 0;
+      let timer = null;
+
+      function build() {
+        slides = loadHeroSlides();
+        track.innerHTML = slides.map((s, i) => {
+          // If src is missing, render a styled placeholder with the caption text
+          // so the slider never shows a broken image.
+          const img = s.src
+            ? `<img src="${s.src}" alt="${(s.alt || s.caption || 'Brand').replace(/"/g, '&quot;')}"
+                    onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'placeholder',textContent:${JSON.stringify(s.caption || s.alt || 'Brand')}}))" />`
+            : `<div class="placeholder">${(s.caption || s.alt || 'Brand')}</div>`;
+          return `<li class="${i === 0 ? 'active' : ''}" data-i="${i}">${img}</li>`;
+        }).join('');
+        dotsHost.innerHTML = slides.map((_, i) =>
+          `<button type="button" class="${i === 0 ? 'active' : ''}" data-i="${i}" role="tab" aria-label="Slide ${i+1}"></button>`
+        ).join('');
+        idx = 0;
+        renderCaption();
+        // Hide the chrome if there's only one slide.
+        const single = slides.length <= 1;
+        prevBtn.style.display = single ? 'none' : '';
+        nextBtn.style.display = single ? 'none' : '';
+        dotsHost.style.display = single ? 'none' : '';
+      }
+
+      function go(next) {
+        if (!slides.length) return;
+        idx = (next + slides.length) % slides.length;
+        track.querySelectorAll('li').forEach((li, i) => li.classList.toggle('active', i === idx));
+        dotsHost.querySelectorAll('button').forEach((b, i) => b.classList.toggle('active', i === idx));
+        renderCaption();
+      }
+
+      function renderCaption() {
+        const s = slides[idx]; if (!s) { caption.innerHTML = ''; return; }
+        const link = s.href ? `<a href="${s.href}">Browse ${s.caption || 'this brand'} →</a>` : '';
+        caption.innerHTML = `<strong>${s.caption || ''}</strong>${s.sub ? `<small>${s.sub}</small>` : ''}${link}`;
+      }
+
+      function start() {
+        stop();
+        if (slides.length > 1) timer = setInterval(() => go(idx + 1), 5000);
+      }
+      function stop() { if (timer) { clearInterval(timer); timer = null; } }
+
+      prevBtn.addEventListener('click', () => { go(idx - 1); start(); });
+      nextBtn.addEventListener('click', () => { go(idx + 1); start(); });
+      dotsHost.addEventListener('click', e => {
+        const b = e.target.closest('button[data-i]');
+        if (b) { go(Number(b.dataset.i)); start(); }
+      });
+      // Pause on hover/focus so visitors reading captions don't lose them.
+      root.addEventListener('mouseenter', stop);
+      root.addEventListener('mouseleave', start);
+      root.addEventListener('focusin',  stop);
+      root.addEventListener('focusout', start);
+
+      // Live-refresh when admin saves new slides in another tab.
+      window.addEventListener('storage', (e) => {
+        if (e.key === HERO_SLIDES_KEY) { build(); start(); }
+      });
+
+      build(); start();
+      return { build, go };
+    })();
+  </script>
+</body>
+</html>

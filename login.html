@@ -1,0 +1,627 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" type="image/png" href="assets/img/favicon.png" />
+  <title>Sign In — Paint Masters</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/styles.css" />
+  <style>
+    /* Page-specific styles — reuse global tokens (--navy-900, --gold-500, etc.).
+       Mobile-first layout: single column with a compact brand header on top of
+       the form. Desktop (>=900px) splits into a 2-column hero + form layout. */
+    body {
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: 1fr;
+      background: var(--ink-50);
+      font-family: var(--font-body);
+    }
+    @media (min-width: 900px) {
+      body { grid-template-columns: 1.1fr 1fr; }
+    }
+
+    /* Mobile-only header — gives the page brand context when the hero panel
+       is hidden (<900px). Vanishes entirely on desktop. */
+    .auth-mobile-header {
+      display: flex;
+      align-items: center; justify-content: center;
+      gap: 12px;
+      padding: 22px 20px 0;
+      position: relative;
+    }
+    .auth-mobile-header::before {
+      content: ""; position: absolute; left: 0; right: 0; top: 0; height: 4px;
+      background: linear-gradient(90deg, var(--red), var(--gold-500), var(--green));
+    }
+    .auth-mobile-header img { height: 38px; width: auto; }
+    .auth-mobile-header .wordmark {
+      font-family: var(--font-display); font-weight: 700;
+      font-size: 1.05rem; letter-spacing: 0.04em; color: var(--navy-900);
+    }
+    .auth-mobile-header .wordmark span { color: var(--gold-500); }
+    @media (min-width: 900px) { .auth-mobile-header { display: none; } }
+
+    /* Left brand panel — full-bleed gradient with the kente accent at the top. */
+    .auth-hero {
+      display: none;
+      position: relative;
+      background:
+        radial-gradient(circle at 20% 20%, rgba(245,184,0,0.18), transparent 50%),
+        linear-gradient(135deg, var(--navy-900), var(--navy-800) 60%, #08182f);
+      color: #fff;
+      padding: 56px 64px;
+      overflow: hidden;
+    }
+    @media (min-width: 900px) { .auth-hero { display: flex; flex-direction: column; justify-content: space-between; } }
+    .auth-hero::before {
+      content: ""; position: absolute; left: 0; right: 0; top: 0; height: 6px;
+      background: linear-gradient(90deg, var(--red), var(--gold-500), var(--green));
+    }
+    .auth-hero-mark { display: flex; align-items: center; gap: 14px; }
+    .auth-hero-mark .brand-name { color: #fff; font-family: var(--font-display); font-weight: 700; font-size: 1.25rem; letter-spacing: 0.04em; }
+    .auth-hero-mark .brand-name span { color: var(--gold-500); }
+    .auth-hero h1 {
+      color: #fff; font-size: clamp(2rem, 3vw + 1rem, 3rem); line-height: 1.1; margin: 0 0 16px;
+    }
+    .auth-hero p { color: rgba(255,255,255,0.78); max-width: 460px; font-size: 1.05rem; line-height: 1.6; }
+    .auth-hero-points { margin-top: 28px; display: grid; gap: 14px; }
+    .auth-hero-points .pt {
+      display: flex; gap: 12px; align-items: flex-start;
+      padding: 14px 16px; border-radius: 12px;
+      background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
+    }
+    .auth-hero-points .pt strong { color: #fff; display: block; font-size: 0.95rem; }
+    .auth-hero-points .pt small  { color: rgba(255,255,255,0.7); font-size: 0.82rem; }
+    .auth-hero-points .pt .ico   { font-size: 1.4rem; }
+
+    /* Right form panel. Padding shrinks on tiny screens so the card uses
+       more of the viewport — no wasted gutters on a 320px phone. */
+    .auth-form-wrap {
+      display: flex; align-items: center; justify-content: center;
+      padding: 28px 20px 36px;
+    }
+    @media (min-width: 540px) { .auth-form-wrap { padding: 40px 24px; } }
+
+    .auth-form {
+      width: 100%; max-width: 420px;
+      background: #fff;
+      border-radius: 18px;
+      padding: 26px 22px;
+      box-shadow: 0 12px 32px rgba(11,31,58,0.06), 0 2px 6px rgba(11,31,58,0.04);
+      border: 1px solid var(--ink-100);
+    }
+    @media (min-width: 540px) { .auth-form { padding: 36px 32px; } }
+
+    .auth-form h2 {
+      font-family: var(--font-display); font-weight: 700; color: var(--navy-900);
+      font-size: 1.45rem; margin: 0 0 6px;
+    }
+    @media (min-width: 540px) { .auth-form h2 { font-size: 1.7rem; } }
+    .auth-form .lede { color: var(--ink-500); margin-bottom: 22px; font-size: 0.92rem; }
+
+    .role-pills {
+      display: grid; grid-template-columns: repeat(3, 1fr);
+      gap: 6px; padding: 4px;
+      background: var(--ink-100); border-radius: 10px; margin-bottom: 22px;
+    }
+    .role-pills button {
+      border: 0; background: transparent; padding: 9px 6px;
+      border-radius: 7px; cursor: pointer;
+      color: var(--ink-700); font-weight: 600;
+      font-size: 0.74rem;             /* tight enough for 320px viewports */
+      white-space: nowrap;
+      overflow: hidden; text-overflow: ellipsis;
+    }
+    @media (min-width: 380px) { .role-pills button { font-size: 0.82rem; } }
+    .role-pills button.active { background: #fff; color: var(--navy-900); box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+    /* Tiny-viewport fallback labels so "Paint Master" doesn't squish.
+       Show short on narrow, long on wider. */
+    .pill-long { display: none; }
+    @media (min-width: 380px) {
+      .pill-short { display: none; }
+      .pill-long  { display: inline; }
+    }
+
+    .field { margin-bottom: 16px; }
+    .field label { display: block; font-size: 0.82rem; font-weight: 600; color: var(--ink-700); margin-bottom: 6px; }
+    .field input {
+      width: 100%; padding: 11px 14px; border: 1.5px solid var(--ink-300);
+      border-radius: 10px; font-size: 0.96rem; font-family: inherit; background: #fff;
+      color: var(--ink-900); transition: border-color 0.15s;
+    }
+    .field input:focus { outline: 0; border-color: var(--navy-700); box-shadow: 0 0 0 4px rgba(46,112,201,0.12); }
+    .field .hint { font-size: 0.78rem; color: var(--ink-500); margin-top: 5px; }
+
+    .row { display: flex; align-items: center; justify-content: space-between; margin: 6px 0 18px; font-size: 0.85rem; flex-wrap: wrap; gap: 10px; }
+    .row a { color: var(--navy-900); font-weight: 600; }
+    .row label { color: var(--ink-700); display: flex; gap: 6px; align-items: center; cursor: pointer; }
+
+    .btn-submit {
+      width: 100%; padding: 13px; border: 0; border-radius: 11px;
+      background: var(--navy-900); color: #fff;
+      font-size: 0.98rem; font-weight: 700; cursor: pointer;
+      font-family: inherit; transition: transform 0.05s, background 0.15s;
+    }
+    .btn-submit:hover { background: var(--navy-800); }
+    .btn-submit:active { transform: translateY(1px); }
+    .btn-submit:disabled { opacity: 0.6; cursor: wait; }
+
+    .alt {
+      margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--ink-100);
+      text-align: center; font-size: 0.88rem; color: var(--ink-500);
+    }
+    .alt a { color: var(--navy-900); font-weight: 600; }
+
+    .alert {
+      padding: 10px 14px; border-radius: 9px; margin-bottom: 16px;
+      font-size: 0.88rem; display: none;
+    }
+    .alert.err { background: #FEE2E2; color: #991B1B; border: 1px solid #FCA5A5; }
+    .alert.info { background: #DBEAFE; color: #1E3A8A; border: 1px solid #93C5FD; }
+    .alert.show { display: block; }
+
+    .demo-creds {
+      margin-top: 16px; padding: 12px 14px; border-radius: 9px;
+      background: var(--gold-100); border: 1px solid #F2D04A;
+      font-size: 0.76rem; color: #6B4F00;
+      word-wrap: break-word; overflow-wrap: anywhere;
+    }
+    .demo-creds strong { display: block; margin-bottom: 4px; color: #4D3800; }
+    .demo-creds code {
+      background: rgba(255,255,255,0.5); padding: 1px 5px; border-radius: 4px;
+      font-size: 0.76rem;
+    }
+    .demo-creds .pick { color: #4D3800; cursor: pointer; text-decoration: underline; }
+    .demo-creds .pick-row {
+      display: flex; flex-wrap: wrap; gap: 4px 6px;
+      margin-bottom: 4px;
+    }
+
+    /* Mode tabs (Sign in / Create account) — single source of truth for which
+       mode the user is in. Switching modes shows/hides the right copy + fields. */
+    .mode-tabs {
+      display: grid; grid-template-columns: 1fr 1fr;
+      border-bottom: 1px solid var(--ink-100);
+      margin-bottom: 18px;
+    }
+    .mode-tabs button {
+      background: transparent; border: 0; padding: 12px 8px;
+      font-weight: 600; color: var(--ink-500); font-family: inherit; font-size: 0.92rem;
+      cursor: pointer; border-bottom: 2px solid transparent;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .mode-tabs button.active { color: var(--navy-900); border-bottom-color: var(--gold-500); }
+
+    /* Method picker (Phone / Email) — shown for both sign-in and sign-up.
+       Google has its own button below. */
+    .method-pills {
+      display: grid; grid-template-columns: 1fr 1fr;
+      gap: 6px; padding: 4px;
+      background: var(--ink-100); border-radius: 10px; margin-bottom: 16px;
+    }
+    .method-pills button {
+      border: 0; background: transparent; padding: 9px 6px;
+      border-radius: 7px; cursor: pointer;
+      color: var(--ink-700); font-weight: 600; font-size: 0.84rem;
+      font-family: inherit;
+    }
+    .method-pills button.active { background: #fff; color: var(--navy-900); box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+
+    /* "Continue with Google" button — sits above the form fields. */
+    .google-btn {
+      width: 100%; padding: 11px 14px; border: 1.5px solid var(--ink-300);
+      border-radius: 10px; background: #fff; color: var(--ink-900);
+      font-family: inherit; font-size: 0.92rem; font-weight: 600;
+      display: flex; align-items: center; justify-content: center; gap: 10px;
+      cursor: pointer; transition: border-color 0.15s, background 0.15s;
+    }
+    .google-btn:hover { border-color: var(--ink-500); background: var(--ink-50); }
+    .google-btn svg { width: 18px; height: 18px; flex: 0 0 auto; }
+    .divider {
+      display: flex; align-items: center; gap: 12px; margin: 16px 0;
+      color: var(--ink-500); font-size: 0.78rem;
+    }
+    .divider::before, .divider::after {
+      content: ""; flex: 1; height: 1px; background: var(--ink-100);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Left brand panel (hidden on mobile) -->
+  <aside class="auth-hero">
+    <div>
+      <a href="index.html" class="auth-hero-mark" style="text-decoration:none;">
+        <!-- Full horizontal lockup, light variant — sized to ~280px wide -->
+        <span class="brand-lockup" style="display:inline-block;max-width:300px;">
+          <img src="assets/img/paint-masters-logo-full-light.png" alt="Paint Masters"
+               style="width:100%;height:auto;display:block;"
+               onerror="this.replaceWith(document.createTextNode('PAINT MASTERS'))" />
+        </span>
+      </a>
+    </div>
+
+    <div>
+      <h1>Welcome back to<br/>Paint Masters.</h1>
+      <p>One account for customers, paint masters, and dispatch — wherever your work happens.</p>
+
+      <div class="auth-hero-points">
+        <div class="pt"><span class="ico">🎨</span><div><strong>Customers</strong><small>Track quotes, jobs, and warranty in one place.</small></div></div>
+        <div class="pt"><span class="ico">🛠️</span><div><strong>Paint Masters</strong><small>See assignments, log progress, get paid faster.</small></div></div>
+        <div class="pt"><span class="ico">📊</span><div><strong>Dispatch &amp; Admin</strong><small>Pipeline, inventory, and analytics in one console.</small></div></div>
+      </div>
+    </div>
+
+    <small style="color:rgba(255,255,255,0.5);">© 2026 Paint Masters Ghana Ltd.</small>
+  </aside>
+
+  <!-- Right form panel -->
+  <main>
+    <!-- Mobile-only brand header — visible <900px when the hero panel hides.
+         Gives the page brand context without cramping the form. -->
+    <div class="auth-mobile-header">
+      <img src="assets/img/paint-masters-logo.png" alt="Paint Masters"
+           onerror="this.replaceWith(Object.assign(document.createElement('span'),{textContent:'PM',style:'font-weight:700;color:#0B1F3A;'}))" />
+      <span class="wordmark">PAINT <span>MASTERS</span></span>
+    </div>
+
+    <div class="auth-form-wrap">
+    <form class="auth-form" id="loginForm" novalidate>
+      <h2 id="formTitle">Sign in</h2>
+      <div class="lede" id="formLede">Use your phone number, email, or Google account.</div>
+
+      <!-- Mode: sign in vs create a customer account. Painters apply via
+           register.html and admins are created via admin/team.html, so the
+           "Create account" tab is intentionally a customer-only flow. -->
+      <div class="mode-tabs" role="tablist" aria-label="Sign in or create account">
+        <button type="button" class="active" data-mode="signin">Sign in</button>
+        <button type="button" data-mode="signup">Create account</button>
+      </div>
+
+      <!-- Role selector — only visible in sign-in mode. The backend infers role
+           from the account; this just picks the right success copy and redirect. -->
+      <div class="role-pills" id="rolePills" role="tablist" aria-label="Sign in as">
+        <button type="button" class="active" data-role="customer">Customer</button>
+        <button type="button" data-role="painter"><span class="pill-long">Paint Master</span><span class="pill-short">Master</span></button>
+        <button type="button" data-role="admin">Admin</button>
+      </div>
+
+      <!-- Continue with Google — works for both sign in and sign up. -->
+      <button type="button" class="google-btn" id="googleBtn" aria-label="Continue with Google">
+        <svg viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.17-1.84H9v3.49h4.84c-.21 1.13-.84 2.08-1.79 2.72v2.26h2.9c1.7-1.56 2.69-3.86 2.69-6.63z"/>
+          <path fill="#34A853" d="M9 18c2.43 0 4.46-.81 5.95-2.18l-2.9-2.26c-.8.54-1.83.86-3.05.86-2.34 0-4.32-1.58-5.03-3.7H.96v2.34A8.99 8.99 0 0 0 9 18z"/>
+          <path fill="#FBBC05" d="M3.97 10.71A5.41 5.41 0 0 1 3.68 9c0-.59.1-1.17.29-1.71V4.95H.96A8.99 8.99 0 0 0 0 9c0 1.45.35 2.82.96 4.05l3.01-2.34z"/>
+          <path fill="#EA4335" d="M9 3.58c1.32 0 2.5.45 3.43 1.35l2.57-2.57C13.46.89 11.43 0 9 0A8.99 8.99 0 0 0 .96 4.95L3.97 7.3C4.68 5.18 6.66 3.58 9 3.58z"/>
+        </svg>
+        <span id="googleBtnLabel">Continue with Google</span>
+      </button>
+
+      <div class="divider">or</div>
+
+      <!-- Method picker — Phone or Email. Visible in both modes. -->
+      <div class="method-pills" id="methodPills" role="tablist" aria-label="Sign-in method">
+        <button type="button" class="active" data-method="phone">📱 Phone</button>
+        <button type="button" data-method="email">✉️ Email</button>
+      </div>
+
+      <div class="alert err" id="errBox"></div>
+      <div class="alert info" id="infoBox"></div>
+
+      <!-- Name — only visible in sign-up mode. -->
+      <div class="field" id="nameField" style="display:none;">
+        <label for="signupName">Your name</label>
+        <input id="signupName" type="text" autocomplete="name" placeholder="e.g. Ama Owusu" />
+      </div>
+
+      <!-- Phone — visible when method=phone (both modes). -->
+      <div class="field" id="phoneField">
+        <label for="phone">Phone number</label>
+        <input id="phone" name="phone" type="tel" autocomplete="tel"
+               placeholder="0244 000 000" />
+        <div class="hint">Ghana number — starts with 0 or +233.</div>
+      </div>
+
+      <!-- Email — visible when method=email (both modes). -->
+      <div class="field" id="emailField" style="display:none;">
+        <label for="email">Email address</label>
+        <input id="email" name="email" type="email" autocomplete="email"
+               placeholder="you@example.com" />
+      </div>
+
+      <div class="field">
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password"
+               autocomplete="current-password" placeholder="••••••••" />
+        <div class="hint" id="passwordHint" style="display:none;">At least 6 characters.</div>
+      </div>
+
+      <div class="row" id="signinRow">
+        <label><input type="checkbox" id="remember" checked /> Stay signed in</label>
+        <a href="#" onclick="alert('Password reset is coming soon. For demo, use password123.');return false;">Forgot password?</a>
+      </div>
+
+      <button type="submit" class="btn-submit" id="submitBtn">Sign in →</button>
+
+      <div class="demo-creds" id="demoBox">
+        <strong>Try the demo</strong>
+        Tap a row to autofill:
+        <div style="margin-top:6px;line-height:1.7;">
+          <div class="pick-row"><span class="pick" data-fill="0244200001">Customer · 0244200001</span> <code>password123</code></div>
+          <div class="pick-row"><span class="pick" data-fill="0244300001">Master · 0244300001</span> <code>password123</code></div>
+          <div class="pick-row"><span class="pick" data-fill="0244000000">Admin · 0244000000</span> <code>password123</code></div>
+        </div>
+      </div>
+
+      <div class="alt" id="altLine">
+        New to Paint Masters? <a href="#" id="altLink">Create a customer account</a> — or <a href="quote.html">get an instant quote</a> first.
+      </div>
+    </form>
+    </div>
+  </main>
+
+  <script src="assets/shared.js"></script>
+  <script>
+    // Read query string. ?next= can be either:
+    //   • "admin"        — pre-select the admin tab + redirect to admin home
+    //   • a path string  — return the user to that path after sign-in
+    //                      (e.g. ?next=track.html or ?next=my.html#bookings)
+    // ?mode=signup pre-selects the "Create account" tab.
+    const params = new URLSearchParams(location.search);
+    const nextRaw = params.get('next');
+    const nextHint = nextRaw;
+    function safeNext(raw) {
+      if (!raw) return null;
+      try { raw = decodeURIComponent(raw); } catch (e) { /* keep raw */ }
+      if (raw === 'admin') return 'admin/index.html';
+      if (/^https?:\/\//i.test(raw) || raw.startsWith('//')) return null;
+      if (raw.includes('..')) return null;
+      return raw.replace(/^\/+/, '');
+    }
+    const nextPath = safeNext(nextRaw);
+
+    const errBox    = document.getElementById('errBox');
+    const infoBox   = document.getElementById('infoBox');
+    const titleEl   = document.getElementById('formTitle');
+    const ledeEl    = document.getElementById('formLede');
+    const submitBtn = document.getElementById('submitBtn');
+    const altLink   = document.getElementById('altLink');
+    const altLine   = document.getElementById('altLine');
+    const demoBox   = document.getElementById('demoBox');
+    const passwordHint = document.getElementById('passwordHint');
+    const signinRow = document.getElementById('signinRow');
+    const rolePills = document.getElementById('rolePills');
+    const nameField = document.getElementById('nameField');
+    const phoneField= document.getElementById('phoneField');
+    const emailField= document.getElementById('emailField');
+    const googleLbl = document.getElementById('googleBtnLabel');
+
+    let mode   = 'signin';     // 'signin' | 'signup'
+    let role   = 'customer';   // 'customer' | 'painter' | 'admin'  (signin only)
+    let method = 'phone';      // 'phone'   | 'email'
+
+    // ---------- Mode (sign in vs create account) ----------
+    document.querySelectorAll('.mode-tabs button').forEach(b => {
+      b.addEventListener('click', () => setMode(b.dataset.mode));
+    });
+    function setMode(next) {
+      mode = next;
+      document.querySelectorAll('.mode-tabs button').forEach(b => {
+        b.classList.toggle('active', b.dataset.mode === next);
+      });
+      // Sign-up is customer-only — hide the role pills + demo creds + "stay
+      // signed in / forgot" row, and show the name field. Submit copy flips.
+      const isSignup = next === 'signup';
+      rolePills.style.display    = isSignup ? 'none' : '';
+      nameField.style.display    = isSignup ? '' : 'none';
+      passwordHint.style.display = isSignup ? '' : 'none';
+      signinRow.style.display    = isSignup ? 'none' : '';
+      demoBox.style.display      = isSignup ? 'none' : '';
+      submitBtn.textContent      = isSignup ? 'Create account →' : 'Sign in →';
+      googleLbl.textContent      = isSignup ? 'Sign up with Google' : 'Continue with Google';
+      altLink.textContent        = isSignup ? 'Sign in instead' : 'Create a customer account';
+      altLine.firstChild.textContent = isSignup
+        ? 'Already have an account? '
+        : 'New to Paint Masters? ';
+      // When entering sign-up, force role back to customer (it's the only
+      // self-signup path we support; painters use register.html).
+      if (isSignup) role = 'customer';
+      refreshTitle();
+    }
+
+    altLink.addEventListener('click', (e) => {
+      e.preventDefault();
+      setMode(mode === 'signin' ? 'signup' : 'signin');
+    });
+
+    // Allow ?mode=signup deep-link (used by future "Create account" CTAs).
+    if (params.get('mode') === 'signup') setMode('signup');
+
+    // ---------- Role pills (sign-in only) ----------
+    document.querySelectorAll('#rolePills button').forEach(p => {
+      p.addEventListener('click', () => setRole(p.dataset.role));
+    });
+    function setRole(next) {
+      role = next;
+      document.querySelectorAll('#rolePills button').forEach(p => {
+        p.classList.toggle('active', p.dataset.role === next);
+      });
+      refreshTitle();
+    }
+    if (nextHint === 'admin') setRole('admin');
+
+    // ---------- Method (phone / email) ----------
+    document.querySelectorAll('#methodPills button').forEach(p => {
+      p.addEventListener('click', () => setMethod(p.dataset.method));
+    });
+    function setMethod(next) {
+      method = next;
+      document.querySelectorAll('#methodPills button').forEach(p => {
+        p.classList.toggle('active', p.dataset.method === next);
+      });
+      phoneField.style.display = (next === 'phone') ? '' : 'none';
+      emailField.style.display = (next === 'email') ? '' : 'none';
+    }
+
+    function refreshTitle() {
+      if (mode === 'signup') {
+        titleEl.textContent = 'Create your account';
+        ledeEl.textContent  = 'Sign up with phone, email, or Google. Customers only — Paint Masters apply via the Academy.';
+        return;
+      }
+      const copy = {
+        customer: { t: 'Sign in',              l: 'Use your phone, email, or Google to track your quotes, jobs, and warranty.' },
+        painter:  { t: 'Paint Master sign in', l: 'See your assignments and log progress.' },
+        admin:    { t: 'Admin sign in',        l: 'Pipeline, inventory, and analytics console.' }
+      }[role];
+      titleEl.textContent = copy.t;
+      ledeEl.textContent  = copy.l;
+    }
+    refreshTitle();
+
+    // ---------- Already signed in? Skip the form. ----------
+    const existing = pmAuth.user();
+    if (existing) {
+      const target = nextPath || homeForRole(existing.role);
+      infoBox.textContent = `You're already signed in as ${existing.name}. Redirecting…`;
+      infoBox.classList.add('show');
+      setTimeout(() => location.replace(target), 700);
+    }
+
+    // Role-aware default landing path. Painters get the painter dashboard;
+    // admins get the admin console; everyone else (customers) gets my.html.
+    function homeForRole(role) {
+      if (role === 'admin')   return 'admin/index.html';
+      if (role === 'painter') return 'painter.html';
+      return 'my.html';
+    }
+
+    // ---------- Demo-credential autofill ----------
+    document.querySelectorAll('[data-fill]').forEach(el => {
+      el.addEventListener('click', () => {
+        setMode('signin');
+        setMethod('phone');
+        document.getElementById('phone').value = el.dataset.fill;
+        document.getElementById('password').value = 'password123';
+        if (el.dataset.fill.startsWith('0244000')) setRole('admin');
+        else if (el.dataset.fill.startsWith('0244300')) setRole('painter');
+        else setRole('customer');
+      });
+    });
+
+    // ---------- Helpers ----------
+    function showError(msg) {
+      errBox.textContent = msg;
+      errBox.classList.add('show');
+    }
+    function hideError() { errBox.classList.remove('show'); }
+    function lockSubmit(label) {
+      submitBtn.disabled = true;
+      submitBtn.textContent = label;
+    }
+    function unlockSubmit() {
+      submitBtn.disabled = false;
+      submitBtn.textContent = mode === 'signup' ? 'Create account →' : 'Sign in →';
+    }
+    function pickRedirect(user) {
+      // Honour ?next= if it's a real page path; otherwise role-appropriate home.
+      return nextPath || homeForRole(user.role);
+    }
+
+    // ---------- Google sign-in / sign-up ----------
+    // Real OAuth integration ships with the backend. For the demo we collect
+    // the user's name + Google email via two prompts (good enough to exercise
+    // the create-account / sign-in flow end-to-end).
+    document.getElementById('googleBtn').addEventListener('click', async () => {
+      hideError();
+      const isSignup = mode === 'signup';
+      const email = prompt(
+        isSignup
+          ? 'Continue with Google — what is your Google email?'
+          : 'Continue with Google — sign in with which email?'
+      );
+      if (!email) return;
+      let name = '';
+      if (isSignup) {
+        name = prompt('Almost done — what should we call you?') || '';
+        if (!name.trim()) {
+          showError('Please enter your name to finish signing up.');
+          return;
+        }
+      }
+      lockSubmit('Connecting to Google…');
+      const result = await pmAuth.signInWithGoogle({ name, email });
+      if (!result.ok) {
+        showError(result.error || 'Could not complete Google sign-in.');
+        unlockSubmit();
+        return;
+      }
+      location.replace(pickRedirect(result.user));
+    });
+
+    // ---------- Form submit ----------
+    document.getElementById('loginForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      hideError();
+
+      const password = document.getElementById('password').value;
+      const phone    = document.getElementById('phone').value.trim();
+      const email    = document.getElementById('email').value.trim();
+
+      if (mode === 'signup') {
+        const name = document.getElementById('signupName').value.trim();
+        if (!name) return showError('Please enter your name.');
+        if (method === 'phone' && !phone) return showError('Please enter your phone number.');
+        if (method === 'email' && !email) return showError('Please enter your email.');
+        if (!password || password.length < 6) return showError('Password must be at least 6 characters.');
+
+        lockSubmit('Creating your account…');
+        const result = await pmAuth.signupCustomer({
+          name,
+          phone:  method === 'phone' ? phone : '',
+          email:  method === 'email' ? email : '',
+          password,
+          source: 'login-page'
+        });
+        if (!result.ok) {
+          showError(result.error || 'Could not create your account.');
+          unlockSubmit();
+          return;
+        }
+        location.replace(pickRedirect(result.user));
+        return;
+      }
+
+      // SIGN IN
+      if (method === 'phone' && !phone)  return showError('Please enter your phone number.');
+      if (method === 'email' && !email)  return showError('Please enter your email.');
+      if (!password) return showError('Please enter your password.');
+
+      lockSubmit('Signing in…');
+      const result = method === 'email'
+        ? await pmAuth.loginWithEmail({ email, password })
+        : await pmAuth.login({ phone, password });
+
+      if (!result.ok) {
+        showError(result.error || 'Could not sign in.');
+        unlockSubmit();
+        return;
+      }
+
+      // Role gate — admin tab requires an actual admin account.
+      if (role === 'admin' && result.user.role !== 'admin') {
+        showError('This account does not have admin access.');
+        pmAuth.logout();
+        unlockSubmit();
+        return;
+      }
+
+      location.replace(pickRedirect(result.user));
+    });
+  </script>
+</body>
+</html>

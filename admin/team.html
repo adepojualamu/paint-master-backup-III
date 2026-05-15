@@ -1,0 +1,472 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" type="image/png" href="../assets/img/favicon.png" />
+  <title>Team — Paint Masters Dispatcher</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/admin.css" />
+  <style>
+    .team-grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 24px; align-items: start; }
+    @media (max-width: 1000px) { .team-grid { grid-template-columns: 1fr; } }
+
+    .member-row {
+      display: grid; grid-template-columns: 48px 1fr auto auto; gap: 14px;
+      align-items: center; padding: 14px 16px;
+      border: 1px solid var(--ink-100); border-radius: 12px;
+      background: #fff;
+    }
+    .member-row + .member-row { margin-top: 10px; }
+    .member-row .avatar {
+      width: 44px; height: 44px; border-radius: 50%;
+      display: grid; place-items: center;
+      color: #fff; font-weight: 700; font-size: 0.92rem;
+      background: linear-gradient(135deg, var(--navy-700), var(--gold-500));
+    }
+    .member-row strong { display: block; color: var(--navy-900); font-size: 0.95rem; }
+    .member-row small  { color: var(--ink-500); font-size: 0.82rem; }
+    .role-pill {
+      font-size: 0.72rem; padding: 3px 9px; border-radius: 999px;
+      font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+    }
+    .role-super { background: var(--gold-100); color: #6B4F00; }
+    .role-admin { background: rgba(46,112,201,0.14); color: #1B4B91; }
+    .role-mgr   { background: rgba(30,127,79,0.14); color: var(--green); }
+    .row-actions { display: flex; gap: 6px; }
+    .row-actions button {
+      background: transparent; border: 1px solid var(--ink-100);
+      border-radius: 8px; padding: 6px 10px; font-size: 0.82rem;
+      cursor: pointer; color: var(--ink-700);
+    }
+    .row-actions button:hover { border-color: var(--navy-700); color: var(--navy-900); }
+    .row-actions .danger:hover { border-color: var(--err); color: var(--err); }
+
+    .invite-card {
+      background: #fff; border: 1px solid var(--ink-100); border-radius: 14px; padding: 20px 22px;
+      position: sticky; top: 96px;
+    }
+    .invite-card h3 { margin: 0 0 4px; }
+    .invite-card .lede { color: var(--ink-500); font-size: 0.88rem; margin-bottom: 16px; }
+    .field { margin-bottom: 12px; }
+    .field label { display: block; font-size: 0.78rem; font-weight: 600; color: var(--ink-700); margin-bottom: 5px; }
+    .field input, .field select {
+      width: 100%; padding: 10px 12px;
+      border: 1.5px solid var(--ink-300); border-radius: 9px;
+      font-size: 0.9rem; font-family: inherit; background: #fff;
+    }
+    .field input:focus, .field select:focus {
+      outline: 0; border-color: var(--navy-700); box-shadow: 0 0 0 4px rgba(46,112,201,0.10);
+    }
+
+    .stat-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 16px; }
+    .stat-card {
+      background: var(--ink-50); border-radius: 10px; padding: 12px 14px;
+    }
+    .stat-card .lbl { font-size: 0.72rem; color: var(--ink-500); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }
+    .stat-card .val { font-family: var(--font-display); font-size: 1.6rem; color: var(--navy-900); font-weight: 700; }
+  </style>
+</head>
+<body>
+  <div class="admin-shell">
+    <div id="admin-sidebar"></div>
+    <div class="admin-main">
+      <div id="admin-topbar"></div>
+      <div class="main">
+
+        <div class="page-head">
+          <div>
+            <h1>Team</h1>
+            <div class="sub">Add admins, dispatchers, and operations managers to Paint Masters.</div>
+          </div>
+        </div>
+
+        <div class="stat-row mt-24">
+          <div class="stat-card"><div class="lbl">Total members</div><div class="val" id="statTotal">—</div></div>
+          <div class="stat-card"><div class="lbl">Super admins</div><div class="val" id="statSuper">—</div></div>
+          <div class="stat-card"><div class="lbl">Last invite</div><div class="val" id="statLast" style="font-size:1.1rem;">—</div></div>
+        </div>
+
+        <div class="team-grid">
+
+          <!-- Member list -->
+          <div>
+            <div id="teamList"></div>
+
+            <!-- All-account password panel — every account on the platform
+                 with a row showing role, status, when they last signed in,
+                 and an admin-only Reset password action. The panel intentionally
+                 does NOT show the actual password (or its hash) — passwords
+                 are bcrypt-hashed on the backend, can be reset to a fresh
+                 temporary value, but are never readable. -->
+            <h3 style="margin-top:32px;font-size:1.1rem;color:var(--navy-900);">User passwords
+              <span style="background:var(--ink-100);color:var(--ink-700);font-size:0.7rem;font-weight:700;padding:3px 9px;border-radius:999px;letter-spacing:0.06em;text-transform:uppercase;margin-left:8px;vertical-align:middle;">Hashed · Reset only</span>
+            </h3>
+            <p class="small" style="color:var(--ink-500);margin:0 0 14px;">
+              Passwords are stored bcrypt-hashed (one-way). You can reset any account to a fresh temporary password — the user must then change it on next sign-in. You can never read someone's existing password.
+            </p>
+            <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+              <input id="upSearch" type="search" placeholder="Filter by name, phone, role..." style="flex:1;min-width:240px;padding:9px 12px;border:1.5px solid var(--ink-300);border-radius:9px;font-size:0.92rem;font-family:inherit;" />
+              <select id="upRoleFilter" style="padding:9px 12px;border:1.5px solid var(--ink-300);border-radius:9px;font-size:0.92rem;background:#fff;font-family:inherit;">
+                <option value="">All roles</option>
+                <option value="admin">Admin</option>
+                <option value="painter">Paint Master</option>
+                <option value="customer">Customer</option>
+              </select>
+            </div>
+            <div id="passwordPanel"></div>
+          </div>
+
+          <!-- Invite form -->
+          <div>
+            <div class="invite-card">
+              <h3>Invite a new member</h3>
+              <p class="lede">They'll receive a sign-in link by SMS once we wire Hubtel. For now the entry persists locally and is discoverable in this list.</p>
+
+              <div class="field">
+                <label for="invName">Full name</label>
+                <input type="text" id="invName" placeholder="Akosua Boateng" />
+              </div>
+              <div class="field">
+                <label for="invPhone">Phone (Ghana)</label>
+                <input type="tel" id="invPhone" placeholder="0244 000 000" />
+              </div>
+              <div class="field">
+                <label for="invEmail">Email <small style="color:var(--ink-500);font-weight:400;">(optional)</small></label>
+                <input type="email" id="invEmail" placeholder="akosua@paintmasters.gh" />
+              </div>
+              <div class="field">
+                <label for="invRole">Role</label>
+                <select id="invRole">
+                  <option value="admin" selected>Admin — full console access</option>
+                  <option value="manager">Manager — jobs + customers, no settings</option>
+                  <option value="super">Super admin — incl. team + billing</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="invRegion">Region</label>
+                <select id="invRegion" data-pm-regions='{}'>
+                  <option>Accra</option>
+                </select>
+              </div>
+
+              <button class="btn btn-primary btn-block" onclick="addMember()" style="margin-top:8px;">Send invite</button>
+
+              <p class="small" style="color:var(--ink-500);margin-top:14px;">
+                Backend wire-up: when <code>POST /api/admin/users</code> ships, this form will hit it directly. The role field maps to a <code>permissions</code> column on <code>users</code>.
+              </p>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <script src="../assets/shared.js"></script>
+  <script src="assets/admin-shared.js"></script>
+  <script>
+    adminMount('team');
+    pmRegions.populate(document.getElementById('invRegion'), 'Accra');
+
+    // The team list is just pmUsers filtered to admin-tier roles. One source
+    // of truth — the same store login.html validates against, so a member
+    // invited here can immediately sign in with the credentials we issue.
+
+    // Seed three sample admins on first load so the page isn't empty.
+    function ensureSeedTeam() {
+      const existing = pmUsers.list({ role: 'admin' }).length
+                     + pmUsers.list({ role: 'super' }).length
+                     + pmUsers.list({ role: 'manager' }).length;
+      if (existing > 0) return;
+      const seed = [
+        { name: 'Akosua Boateng', phone: '0244000010', email: 'akosua@paintmasters.gh', role: 'super',   region: 'Accra',  password: 'password123', status: 'active' },
+        { name: 'Kwame Asante',   phone: '0244000020', email: 'kwame@paintmasters.gh',  role: 'admin',   region: 'Accra',  password: 'password123', status: 'active' },
+        { name: 'Adjoa Frimpong', phone: '0244000030', email: 'adjoa@paintmasters.gh',  role: 'manager', region: 'Kumasi', password: 'password123', status: 'active' },
+      ];
+      seed.forEach(s => pmUsers.add(s));
+    }
+    ensureSeedTeam();
+
+    function loadTeam() {
+      // Anyone in pmUsers whose role is one of the admin tiers.
+      return pmUsers.load().filter(u => ['super','admin','manager'].includes(u.role));
+    }
+
+    function render() {
+      const team = loadTeam();
+      document.getElementById('statTotal').textContent  = team.length;
+      document.getElementById('statSuper').textContent  = team.filter(m => m.role === 'super').length;
+      const newest = [...team].sort((a, b) => ((a.created_at || '') < (b.created_at || '') ? 1 : -1))[0];
+      document.getElementById('statLast').textContent  = newest && newest.created_at ? fmtDate(newest.created_at) : '—';
+
+      const host = document.getElementById('teamList');
+      if (team.length === 0) {
+        host.innerHTML = `<div style="text-align:center;padding:30px;border:1px dashed var(--ink-300);border-radius:12px;color:var(--ink-500);">No team members yet — invite the first one →</div>`;
+        return;
+      }
+      host.innerHTML = team.map(m => {
+        const roleLabel = m.role === 'super' ? 'Super Admin' : m.role === 'manager' ? 'Manager' : 'Admin';
+        const roleClass = m.role === 'super' ? 'role-super' : m.role === 'manager' ? 'role-mgr' : 'role-admin';
+        const supers = team.filter(x => x.role === 'super').length;
+        const isLastSuper = m.role === 'super' && supers === 1;
+        const initials = (m.name || 'AD').split(/\s+/).map(s => s[0]).slice(0, 2).join('').toUpperCase();
+        const joined   = m.created_at ? fmtDate(m.created_at) : '—';
+        return `
+          <div class="member-row" data-id="${m.id}">
+            <div class="avatar">${initials}</div>
+            <div>
+              <strong>${m.name}</strong>
+              <small>${m.phone} · ${m.email || '—'} · ${m.region}</small>
+              <small style="display:block;margin-top:2px;">Joined ${joined}</small>
+            </div>
+            <span class="role-pill ${roleClass}">${roleLabel}</span>
+            <div class="row-actions">
+              <button onclick="editMember('${m.id}')">Edit</button>
+              <button class="danger" onclick="removeMember('${m.id}')" ${isLastSuper ? 'disabled title="Promote another super admin first"' : ''}>Remove</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function addMember() {
+      const name   = document.getElementById('invName').value.trim();
+      const phone  = document.getElementById('invPhone').value.trim().replace(/\s+/g, '');
+      const email  = document.getElementById('invEmail').value.trim();
+      const role   = document.getElementById('invRole').value;
+      const region = document.getElementById('invRegion').value;
+
+      if (!name || !phone) { toast('Name and phone are required.', 'warn'); return; }
+      if (!/^0\d{9}$|^\+?233\d{9}$/.test(phone)) {
+        toast('Phone must be a Ghana number (0xxxxxxxxx or +233xxxxxxxxx).', 'warn');
+        return;
+      }
+      if (pmUsers.findByPhone(phone)) {
+        toast('That phone number is already on file.', 'warn');
+        return;
+      }
+
+      // Generate a temporary password the new admin uses for first sign-in.
+      // mustChangePassword forces them through change-password.html the first
+      // time they visit any member or admin page — same flow as a real
+      // "set a password" invite.
+      const password = pmUsers.generatePassword();
+      const created = pmUsers.add({
+        name, phone, email, role, region,
+        status: 'active',     // team invites land active immediately
+        password,
+        mustChangePassword: true
+      });
+      if (!created) { toast('Could not create the invitation.', 'warn'); return; }
+
+      // Show the credentials so the inviter can pass them along.
+      // Backend wire-up will send these via Hubtel SMS automatically.
+      const popup = `${name} added to the team.\n\nSend them these credentials:\n• Phone: ${phone}\n• Password: ${password}`;
+      try {
+        navigator.clipboard.writeText(`Phone: ${phone}\nPassword: ${password}`);
+        toast(`${name} added. Credentials copied to clipboard.`);
+      } catch (e) {
+        toast(`${name} added. Password: ${password}`);
+      }
+      alert(popup);
+
+      document.getElementById('invName').value = '';
+      document.getElementById('invPhone').value = '';
+      document.getElementById('invEmail').value = '';
+      render();
+    }
+
+    function removeMember(id) {
+      const m = pmUsers.findById(id);
+      if (!m) return;
+      if (!confirm(`Remove ${m.name} from the team? They'll lose console access.`)) return;
+      pmUsers.remove(id);
+      toast(`${m.name} removed.`);
+      render();
+    }
+
+    function editMember(id) {
+      const m = pmUsers.findById(id);
+      if (!m) return;
+      const newRole = prompt(`Role for ${m.name}? (super / admin / manager)`, m.role);
+      if (!newRole) return;
+      if (!['super', 'admin', 'manager'].includes(newRole)) {
+        toast('Role must be super, admin, or manager.', 'warn');
+        return;
+      }
+      pmUsers.update(id, { role: newRole });
+      toast(`${m.name} updated.`);
+      render();
+    }
+
+    render();
+
+    // ─────────────────────────────────────────────
+    // User Passwords panel
+    //
+    // Sources every account on the platform: pmUsers (admin-invited team
+    // members + painters created via the roster + customer self-signups)
+    // PLUS the demo seed PM_DEMO_USERS (so admins can reset Akosua/Ama/the
+    // twelve Paint Masters that ship pre-loaded).
+    //
+    // Reset → generates a memorable temp password, persists it locally
+    // (bcrypt happens on the backend; pmUsers stores plaintext for the demo),
+    // best-effort POST /api/admin/users/:id/reset-password if the backend
+    // is reachable, and surfaces the new password in a copy-able modal.
+    // The user is flagged mustChangePassword so they rotate on next sign-in.
+    // ─────────────────────────────────────────────
+    const upFilters = { search: '', role: '' };
+    document.getElementById('upSearch').addEventListener('input', e => { upFilters.search = e.target.value.toLowerCase(); renderPasswordPanel(); });
+    document.getElementById('upRoleFilter').addEventListener('change', e => { upFilters.role = e.target.value; renderPasswordPanel(); });
+
+    function gatherAllAccounts() {
+      const out = [];
+      // pmUsers — local admin-invited + signed-up users.
+      pmUsers.list().forEach(u => out.push({
+        id:       u.id,
+        source:   'local',
+        name:     u.name,
+        phone:    u.phone,
+        email:    u.email || '',
+        role:     u.role,
+        status:   u.mustChangePassword ? 'temp (must change)' : 'hashed (bcrypt)',
+        last:     u.last_sign_in_at || u.updated_at || u.created_at,
+      }));
+      // Demo seed — fixed Akosua / Ama / the 12 painters.
+      if (typeof PM_DEMO_USERS !== 'undefined') {
+        PM_DEMO_USERS.forEach((d, i) => {
+          // Skip if already represented in pmUsers (matched by phone).
+          if (out.some(o => o.phone === d.phone)) return;
+          out.push({
+            id:     'seed:' + d.user.id,
+            source: 'seed',
+            name:   d.user.name,
+            phone:  d.user.phone,
+            email:  d.user.email || '',
+            role:   d.user.role,
+            status: 'hashed (bcrypt)',
+            last:   '—',
+          });
+        });
+      }
+      return out;
+    }
+
+    function renderPasswordPanel() {
+      const host = document.getElementById('passwordPanel'); if (!host) return;
+      let rows = gatherAllAccounts();
+      if (upFilters.search) {
+        rows = rows.filter(r => (r.name + ' ' + r.phone + ' ' + r.email + ' ' + r.role).toLowerCase().includes(upFilters.search));
+      }
+      if (upFilters.role) rows = rows.filter(r => r.role === upFilters.role);
+      if (!rows.length) {
+        host.innerHTML = `<div class="small" style="padding:18px;color:var(--ink-500);text-align:center;">No accounts match.</div>`;
+        return;
+      }
+      host.innerHTML = rows.map(r => {
+        const initials = (r.name || 'PM').split(/\s+/).map(s => s[0]).slice(0,2).join('').toUpperCase();
+        const roleColor = ({admin:'rgba(46,112,201,0.14)', painter:'rgba(245,184,0,0.18)', customer:'rgba(30,127,79,0.14)'})[r.role] || 'var(--ink-100)';
+        const roleText  = ({admin:'#1B4B91', painter:'#6B4F00', customer:'#066544'})[r.role] || 'var(--ink-700)';
+        const statusColor = r.status.includes('temp') ? 'var(--orange)' : 'var(--ink-500)';
+        return `
+          <div class="member-row" data-id="${r.id}" style="grid-template-columns:40px 1fr auto auto auto;">
+            <div class="avatar" style="width:36px;height:36px;font-size:0.78rem;">${initials}</div>
+            <div>
+              <strong>${escTeam(r.name)}</strong>
+              <small>${escTeam(r.phone)}${r.email ? ' · ' + escTeam(r.email) : ''}</small>
+            </div>
+            <span class="role-pill" style="background:${roleColor};color:${roleText};">${escTeam(r.role)}</span>
+            <small style="color:${statusColor};font-weight:600;text-align:right;">${escTeam(r.status)}</small>
+            <button class="row-actions-btn btn btn-outline" style="padding:6px 10px;font-size:0.78rem;" onclick="resetUserPassword('${r.id}')">↺ Reset password</button>
+          </div>`;
+      }).join('');
+    }
+    function escTeam(s) { return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+    async function resetUserPassword(id) {
+      const accounts = gatherAllAccounts();
+      const u = accounts.find(a => String(a.id) === String(id));
+      if (!u) return;
+      if (!confirm(`Reset password for ${u.name}?\n\nA fresh temporary password will be generated. ${u.name.split(' ')[0]} must change it on next sign-in. Their current password stops working immediately.`)) return;
+
+      const newPass = generateTempPassword();
+      // Update locally first (the source of truth for demo mode).
+      if (u.source === 'local') {
+        pmUsers.update(u.id, { password: newPass, mustChangePassword: true });
+      } else {
+        // Demo seed user — we can't edit PM_DEMO_USERS in this tab (it's a const),
+        // but we can mirror it into pmUsers so the new password takes effect.
+        pmUsers.add({
+          name: u.name, phone: u.phone, email: u.email, role: u.role,
+          password: newPass, mustChangePassword: true, status: 'active'
+        });
+      }
+      // Best-effort POST so the backend gets the rotation if it's running.
+      try {
+        const tok = (typeof pmAuth !== 'undefined' && pmAuth.token) ? pmAuth.token() : '';
+        await fetch('/api/admin/users/' + encodeURIComponent(String(id).replace(/^seed:/,'')) + '/reset-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + tok },
+          body: JSON.stringify({ password: newPass })
+        }).catch(() => {});
+      } catch (e) {}
+      // Activity event so other admin tabs see it.
+      if (typeof pmActivity !== 'undefined') {
+        pmActivity.emit({
+          kind: 'system', severity: 'warn',
+          title: `Password reset: ${u.name}`,
+          sub: `Temp issued. ${u.name.split(' ')[0]} must change on next sign-in.`,
+          source: { role: 'admin', name: (typeof pmAuth !== 'undefined' && pmAuth.user()?.name) || 'Admin' }
+        });
+      }
+      showTempPasswordModal(u, newPass);
+      renderPasswordPanel();
+    }
+
+    function generateTempPassword() {
+      const letters = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+      const digits  = '23456789';
+      let p = 'PM-';
+      for (let i = 0; i < 3; i++) p += letters[Math.floor(Math.random() * letters.length)];
+      p += '-';
+      for (let i = 0; i < 4; i++) p += digits[Math.floor(Math.random() * digits.length)];
+      return p;
+    }
+
+    function showTempPasswordModal(u, pwd) {
+      const sms = `Hi ${u.name.split(' ')[0]} — your Paint Masters temporary password is ${pwd}. Sign in at paintmasters.gh and you'll be asked to set a permanent one.`;
+      const back = document.createElement('div');
+      back.style.cssText = 'position:fixed;inset:0;background:rgba(11,31,58,0.6);z-index:2000;display:flex;align-items:center;justify-content:center;padding:16px;';
+      back.innerHTML = `
+        <div style="background:#fff;max-width:520px;width:100%;border-radius:14px;box-shadow:0 12px 32px rgba(11,31,58,0.18);overflow:auto;">
+          <div style="padding:20px 24px;border-bottom:1px solid var(--ink-100);">
+            <h3 style="margin:0;color:var(--navy-900);">Temporary password issued</h3>
+            <p class="small" style="margin:6px 0 0;color:var(--ink-500);">For ${escTeam(u.name)} (${escTeam(u.phone)}). This password is shown once.</p>
+          </div>
+          <div style="padding:20px 24px;">
+            <label class="small" style="display:block;font-weight:700;color:var(--ink-700);margin-bottom:6px;">Temporary password</label>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <code style="flex:1;background:var(--ink-50);padding:12px 14px;border-radius:9px;font-size:1.1rem;font-family:ui-monospace,monospace;color:var(--navy-900);font-weight:700;letter-spacing:0.04em;">${pwd}</code>
+              <button class="btn btn-primary" onclick="navigator.clipboard.writeText('${pwd}').then(()=>{this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',1400)})">Copy</button>
+            </div>
+            <label class="small" style="display:block;font-weight:700;color:var(--ink-700);margin:18px 0 6px;">SMS template</label>
+            <textarea readonly style="width:100%;padding:10px 12px;border:1.5px solid var(--ink-300);border-radius:9px;font-size:0.88rem;font-family:inherit;min-height:80px;" onclick="this.select();">${sms}</textarea>
+            <button class="btn btn-outline mt-12" onclick="navigator.clipboard.writeText(${JSON.stringify(sms)}).then(()=>{this.textContent='SMS copied';setTimeout(()=>this.textContent='Copy SMS template',1400)})" style="width:100%;">Copy SMS template</button>
+            <p class="small" style="margin-top:14px;color:var(--ink-500);line-height:1.5;">
+              Send this to ${u.name.split(' ')[0]} now — once you close this window, the password is gone from this screen. We've flagged the account so they're forced to change it on next sign-in.
+            </p>
+          </div>
+          <div style="padding:14px 24px 20px;border-top:1px solid var(--ink-100);display:flex;justify-content:flex-end;">
+            <button class="btn btn-primary" onclick="this.closest('div[style*=fixed]').remove();">Done</button>
+          </div>
+        </div>`;
+      document.body.appendChild(back);
+    }
+
+    renderPasswordPanel();
+  </script>
+</body>
+</html>

@@ -1,0 +1,429 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" type="image/png" href="../assets/img/favicon.png" />
+  <title>Paint Products — Inventory Manager</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/admin.css" />
+  <style>
+    .pp-toolbar { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom: 18px; }
+    .pp-toolbar input, .pp-toolbar select {
+      padding: 8px 12px; border: 1px solid var(--ink-100); border-radius: 8px;
+      font: inherit; font-size: 0.9rem; background: #fff;
+    }
+
+    .pp-table {
+      width: 100%; border-collapse: collapse; background: #fff;
+      border: 1px solid var(--ink-100); border-radius: var(--radius); overflow: hidden;
+    }
+    .pp-table th, .pp-table td {
+      text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--ink-100);
+      font-size: 0.9rem;
+    }
+    .pp-table th {
+      font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em;
+      color: var(--ink-500); background: #f7faff; font-weight: 700;
+    }
+    .pp-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+    .pp-table td strong { color: var(--navy-900); }
+    .pp-table tr.inactive td { opacity: 0.55; font-style: italic; }
+
+    .pp-type-pill {
+      display:inline-block; padding: 2px 8px; border-radius: 999px;
+      font-size: 0.7rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+      background: var(--ink-100); color: var(--navy-900);
+    }
+    .pp-actions { display: flex; gap: 6px; justify-content: flex-end; }
+    .pp-actions .icon-btn { padding: 4px 8px; font-size: 0.85rem; }
+
+    /* ---- modal form ---- */
+    .pp-modal-back {
+      position: fixed; inset: 0; background: rgba(11,31,58,0.55);
+      display: none; align-items: center; justify-content: center;
+      z-index: 1000; padding: 16px;
+    }
+    .pp-modal-back.show { display: flex; }
+    .pp-modal {
+      background: #fff; border-radius: var(--radius-lg); max-width: 640px; width: 100%;
+      max-height: 92vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    }
+    .pp-modal-head {
+      padding: 18px 22px; border-bottom: 1px solid var(--ink-100);
+      display:flex; justify-content:space-between; align-items:center;
+    }
+    .pp-modal-head h3 { margin: 0; }
+    .pp-modal-body { padding: 18px 22px; display: grid; gap: 14px; }
+    .pp-modal-body .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    @media (max-width: 540px) { .pp-modal-body .row { grid-template-columns: 1fr; } }
+    .pp-modal-body label { display:block; font-size:0.78rem; font-weight:700; color:var(--ink-700); margin-bottom:4px; }
+    .pp-modal-body input, .pp-modal-body select, .pp-modal-body textarea {
+      width: 100%; padding: 9px 12px; border: 1px solid var(--ink-300); border-radius: var(--radius);
+      font: inherit; font-size: 0.92rem;
+    }
+    .pp-modal-foot {
+      padding: 14px 22px; border-top: 1px solid var(--ink-100); background: #fafbfc;
+      display:flex; justify-content:flex-end; gap: 10px;
+    }
+    .pp-error { color: #8a1414; background: #fbdada; padding: 8px 12px; border-radius: 6px; font-size: 0.88rem; }
+  </style>
+</head>
+<body>
+  <div class="admin-shell">
+    <div id="admin-sidebar"></div>
+    <div class="admin-main">
+      <div id="admin-topbar"></div>
+      <div class="main">
+
+        <div class="page-head">
+          <div>
+            <h1>Paint Products</h1>
+            <div class="sub" style="color:var(--ink-500);">Manage the paint catalog the volume calculator reads from. Inventory Manager sub-role required to edit.</div>
+          </div>
+          <div class="page-actions">
+            <button class="btn btn-outline" onclick="ppLoad()">↺ Refresh</button>
+            <button class="btn btn-primary" onclick="ppOpenCreate()">＋ Add product</button>
+          </div>
+        </div>
+
+        <div class="pp-toolbar">
+          <input type="search" id="ppSearch" placeholder="Search by name or brand…" />
+          <select id="ppTypeFilter">
+            <option value="">All types</option>
+            <option value="interior">Interior</option>
+            <option value="wall_ceiling">Wall &amp; Ceiling</option>
+            <option value="furniture_trim">Furniture &amp; Trim</option>
+            <option value="floor">Floor</option>
+            <option value="exterior">Exterior</option>
+            <option value="air_purifying">Air-purifying</option>
+            <option value="pet_dwelling">Pet-dwelling</option>
+            <option value="chalkboard">Chalkboard</option>
+            <option value="emr_shielding">EMR shielding</option>
+          </select>
+          <label style="display:flex;align-items:center;gap:6px;font-size:0.88rem;">
+            <input type="checkbox" id="ppShowInactive" /> Show inactive
+          </label>
+        </div>
+
+        <div id="ppTableWrap">
+          <div style="padding:40px;text-align:center;color:var(--ink-500);">Loading paint catalog…</div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- Create / edit modal -->
+  <div class="pp-modal-back" id="ppModal" role="dialog" aria-modal="true" aria-labelledby="ppModalTitle">
+    <div class="pp-modal">
+      <div class="pp-modal-head">
+        <h3 id="ppModalTitle">Add paint product</h3>
+        <button class="icon-btn" onclick="ppCloseModal()" aria-label="Close">✕</button>
+      </div>
+      <div class="pp-modal-body">
+        <div id="ppFormError" class="pp-error" style="display:none;"></div>
+        <input type="hidden" id="ppId" />
+        <div>
+          <label>Product name *</label>
+          <input id="ppName" placeholder="e.g. Caparol CapaSuper" />
+        </div>
+        <div class="row">
+          <div>
+            <label>Type *</label>
+            <select id="ppType">
+              <option value="interior">Interior</option>
+              <option value="wall_ceiling">Wall &amp; Ceiling</option>
+              <option value="furniture_trim">Furniture &amp; Trim</option>
+              <option value="floor">Floor</option>
+              <option value="exterior">Exterior</option>
+              <option value="air_purifying">Air-purifying</option>
+              <option value="pet_dwelling">Pet-dwelling</option>
+              <option value="chalkboard">Chalkboard</option>
+              <option value="emr_shielding">EMR shielding</option>
+            </select>
+          </div>
+          <div>
+            <label>Brand</label>
+            <input id="ppBrand" placeholder="Caparol, Dulux, Azar…" />
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label>Finish</label>
+            <select id="ppFinish">
+              <option value="">—</option>
+              <option value="matt">Matt</option>
+              <option value="satin">Satin</option>
+              <option value="gloss">Gloss</option>
+              <option value="textured">Textured</option>
+            </select>
+          </div>
+          <div>
+            <label>Coats recommended *</label>
+            <input id="ppCoats" type="number" min="1" max="5" value="2" />
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label>Coverage (m² per litre) *</label>
+            <input id="ppCoverage" type="number" min="0.1" step="0.1" value="11" />
+          </div>
+          <div>
+            <label>Bucket size (litres) *</label>
+            <input id="ppBucket" type="number" min="0.1" step="0.1" value="20" />
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label>Price per litre (GHS) *</label>
+            <input id="ppPrice" type="number" min="0" step="0.01" value="55" />
+          </div>
+          <div style="display:flex;align-items:flex-end;">
+            <label style="display:flex;gap:8px;align-items:center;font-weight:500;font-size:0.92rem;">
+              <input type="checkbox" id="ppActive" checked /> Active (visible in quote builder)
+            </label>
+          </div>
+        </div>
+        <div>
+          <label>Notes</label>
+          <textarea id="ppNotes" rows="2" placeholder="Internal notes — substrate, prep guidance, brand-specific quirks…"></textarea>
+        </div>
+      </div>
+      <div class="pp-modal-foot">
+        <button class="btn btn-ghost"   onclick="ppCloseModal()">Cancel</button>
+        <button class="btn btn-primary" id="ppSaveBtn" onclick="ppSave()">Save product</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="../assets/shared.js"></script>
+  <script src="assets/admin-shared.js"></script>
+  <script>
+    adminMount('paint-products');
+
+    const state = { all: [], q: '', type: '', inactive: false };
+
+    function authHeaders() {
+      const t = (typeof pmAuth !== 'undefined' && pmAuth.token) ? pmAuth.token() : null;
+      return t ? { 'Authorization': `Bearer ${t}` } : {};
+    }
+    function fmtGHS(n) {
+      try { return pmFormatGHS(n); }
+      catch { return 'GHS ' + Math.round(Number(n) || 0).toLocaleString(); }
+    }
+    function esc(s) {
+      return String(s == null ? '' : s)
+        .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+        .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+    }
+    function typeLabel(t) {
+      return ({ interior:'Interior', wall_ceiling:'Wall & Ceiling',
+                furniture_trim:'Furniture & Trim', floor:'Floor', exterior:'Exterior',
+                air_purifying:'Air-purifying', pet_dwelling:'Pet-dwelling',
+                chalkboard:'Chalkboard', emr_shielding:'EMR Shielding' }[t] || t);
+    }
+
+    async function ppLoad() {
+      const wrap = document.getElementById('ppTableWrap');
+      wrap.innerHTML = '<div style="padding:40px;text-align:center;color:var(--ink-500);">Loading paint catalog…</div>';
+      try {
+        const params = new URLSearchParams();
+        if (state.inactive) params.set('include_inactive', '1');
+        const res = await fetch('/api/paint-products?' + params.toString());
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const j = await res.json();
+        state.all = Array.isArray(j.products) ? j.products : [];
+        ppRender();
+      } catch (e) {
+        wrap.innerHTML = `<div style="padding:40px;text-align:center;color:var(--ink-500);">
+          <strong style="color:var(--navy-900);display:block;">Couldn't load the catalog.</strong>
+          <p>${esc(e.message)} — make sure the backend is running.</p>
+        </div>`;
+      }
+    }
+
+    function ppRender() {
+      const q = state.q.toLowerCase();
+      const filtered = state.all.filter(p =>
+        (!state.type || p.type === state.type) &&
+        (!q || (p.name + ' ' + (p.brand || '')).toLowerCase().includes(q))
+      );
+      if (filtered.length === 0) {
+        document.getElementById('ppTableWrap').innerHTML = `
+          <div style="padding:40px;text-align:center;color:var(--ink-500);">
+            <strong style="color:var(--navy-900);display:block;">No products match.</strong>
+            <p>Try clearing the filters above.</p>
+          </div>`;
+        return;
+      }
+      document.getElementById('ppTableWrap').innerHTML = `
+        <table class="pp-table">
+          <thead>
+            <tr>
+              <th>Product</th>
+              <th>Type</th>
+              <th class="num">Coverage</th>
+              <th class="num">Coats</th>
+              <th class="num">Bucket</th>
+              <th class="num">Price/L</th>
+              <th style="text-align:right;">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${filtered.map(p => `
+              <tr class="${p.active ? '' : 'inactive'}">
+                <td>
+                  <strong>${esc(p.name)}</strong>
+                  ${p.brand ? `<div class="small" style="color:var(--ink-500);">${esc(p.brand)}${p.finish ? ' · ' + esc(p.finish) : ''}</div>` : ''}
+                </td>
+                <td><span class="pp-type-pill">${esc(typeLabel(p.type))}</span></td>
+                <td class="num">${p.coverage_m2_per_litre} m²/L</td>
+                <td class="num">${p.coats_recommended}</td>
+                <td class="num">${p.bucket_size_litres} L</td>
+                <td class="num">${fmtGHS(p.price_per_litre)}</td>
+                <td>
+                  <div class="pp-actions">
+                    <button class="icon-btn" title="Edit" onclick="ppOpenEdit(${p.id})">✏️</button>
+                    ${p.active
+                      ? `<button class="icon-btn" title="Deactivate" onclick="ppDeactivate(${p.id})">🗑️</button>`
+                      : `<button class="icon-btn" title="Re-activate" onclick="ppReactivate(${p.id})">↻</button>`}
+                  </div>
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>`;
+    }
+
+    // ----- modal flow -----
+    function ppOpenCreate() {
+      document.getElementById('ppModalTitle').textContent = 'Add paint product';
+      document.getElementById('ppId').value = '';
+      document.getElementById('ppName').value = '';
+      document.getElementById('ppType').value = 'interior';
+      document.getElementById('ppBrand').value = '';
+      document.getElementById('ppFinish').value = '';
+      document.getElementById('ppCoats').value = '2';
+      document.getElementById('ppCoverage').value = '11';
+      document.getElementById('ppBucket').value = '20';
+      document.getElementById('ppPrice').value = '55';
+      document.getElementById('ppActive').checked = true;
+      document.getElementById('ppNotes').value = '';
+      ppShowModal();
+    }
+    function ppOpenEdit(id) {
+      const p = state.all.find(x => x.id === id);
+      if (!p) return;
+      document.getElementById('ppModalTitle').textContent = 'Edit paint product';
+      document.getElementById('ppId').value = p.id;
+      document.getElementById('ppName').value = p.name;
+      document.getElementById('ppType').value = p.type;
+      document.getElementById('ppBrand').value = p.brand || '';
+      document.getElementById('ppFinish').value = p.finish || '';
+      document.getElementById('ppCoats').value = p.coats_recommended;
+      document.getElementById('ppCoverage').value = p.coverage_m2_per_litre;
+      document.getElementById('ppBucket').value = p.bucket_size_litres;
+      document.getElementById('ppPrice').value = p.price_per_litre;
+      document.getElementById('ppActive').checked = !!p.active;
+      document.getElementById('ppNotes').value = p.notes || '';
+      ppShowModal();
+    }
+    function ppShowModal()  { document.getElementById('ppFormError').style.display = 'none'; document.getElementById('ppModal').classList.add('show'); }
+    function ppCloseModal() { document.getElementById('ppModal').classList.remove('show'); }
+
+    async function ppSave() {
+      const errEl = document.getElementById('ppFormError');
+      errEl.style.display = 'none';
+      const id  = document.getElementById('ppId').value;
+      const payload = {
+        name:                  document.getElementById('ppName').value.trim(),
+        type:                  document.getElementById('ppType').value,
+        brand:                 document.getElementById('ppBrand').value.trim() || null,
+        finish:                document.getElementById('ppFinish').value || null,
+        coats_recommended:     Number(document.getElementById('ppCoats').value),
+        coverage_m2_per_litre: Number(document.getElementById('ppCoverage').value),
+        bucket_size_litres:    Number(document.getElementById('ppBucket').value),
+        price_per_litre:       Number(document.getElementById('ppPrice').value),
+        active:                document.getElementById('ppActive').checked,
+        notes:                 document.getElementById('ppNotes').value.trim() || null,
+      };
+      if (!payload.name || payload.name.length < 2) {
+        errEl.textContent = 'Product name is required.'; errEl.style.display = 'block'; return;
+      }
+      const btn = document.getElementById('ppSaveBtn');
+      btn.disabled = true; btn.textContent = 'Saving…';
+      try {
+        const url    = id ? `/api/paint-products/${id}` : '/api/paint-products';
+        const method = id ? 'PUT' : 'POST';
+        const res = await fetch(url, {
+          method,
+          headers: { 'Content-Type': 'application/json', ...authHeaders() },
+          body:    JSON.stringify(payload),
+        });
+        const j = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(j.message || ('HTTP ' + res.status));
+        if (typeof pmToast === 'function') pmToast(id ? 'Product updated.' : 'Product created.', 'success');
+        ppCloseModal();
+        ppLoad();
+      } catch (e) {
+        errEl.textContent = e.message;
+        errEl.style.display = 'block';
+      } finally {
+        btn.disabled = false; btn.textContent = 'Save product';
+      }
+    }
+
+    async function ppDeactivate(id) {
+      const p = state.all.find(x => x.id === id);
+      if (!p) return;
+      if (!confirm(`Deactivate "${p.name}"? It will be hidden from the quote builder. Existing quotes that reference it stay intact.`)) return;
+      try {
+        const res = await fetch(`/api/paint-products/${id}`, {
+          method: 'DELETE',
+          headers: authHeaders(),
+        });
+        const j = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(j.message || ('HTTP ' + res.status));
+        if (typeof pmToast === 'function') pmToast('Product deactivated.', 'success');
+        ppLoad();
+      } catch (e) {
+        alert('Deactivate failed: ' + e.message);
+      }
+    }
+
+    async function ppReactivate(id) {
+      try {
+        const res = await fetch(`/api/paint-products/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', ...authHeaders() },
+          body:    JSON.stringify({ active: true }),
+        });
+        const j = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(j.message || ('HTTP ' + res.status));
+        if (typeof pmToast === 'function') pmToast('Product re-activated.', 'success');
+        ppLoad();
+      } catch (e) {
+        alert('Re-activate failed: ' + e.message);
+      }
+    }
+
+    // ----- toolbar wiring -----
+    document.getElementById('ppSearch').addEventListener('input', e => { state.q = e.target.value; ppRender(); });
+    document.getElementById('ppTypeFilter').addEventListener('change', e => { state.type = e.target.value; ppRender(); });
+    document.getElementById('ppShowInactive').addEventListener('change', e => { state.inactive = e.target.checked; ppLoad(); });
+
+    // Close modal on backdrop click or Esc
+    document.getElementById('ppModal').addEventListener('click', e => {
+      if (e.target.id === 'ppModal') ppCloseModal();
+    });
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && document.getElementById('ppModal').classList.contains('show')) ppCloseModal();
+    });
+
+    ppLoad();
+  </script>
+</body>
+</html>

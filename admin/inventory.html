@@ -1,0 +1,508 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" type="image/png" href="../assets/img/favicon.png" />
+  <title>Paint Masters — Inventory</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/admin.css" />
+</head>
+<body>
+  <div class="admin-shell">
+    <div id="admin-sidebar"></div>
+    <div class="admin-main">
+      <div id="admin-topbar"></div>
+      <div class="main">
+
+        <div class="page-head">
+          <div>
+            <h1>Inventory & Materials</h1>
+            <div class="sub" id="invSub">Tracking <span id="skuCount">0</span> SKUs across paints, primers, specialty and consumables</div>
+          </div>
+          <div class="page-actions">
+            <button class="btn btn-outline" onclick="exportCSV()">⤓ Export CSV</button>
+            <button class="btn btn-primary" onclick="openAddSKU()">＋ Add SKU</button>
+          </div>
+        </div>
+
+        <!-- KPI strip -->
+        <div class="kpi-grid" id="invKpis"></div>
+
+        <!-- Low-stock alert banner -->
+        <div id="alertBanner"></div>
+
+        <!-- Two-column: main table + side panel -->
+        <div style="display:grid; grid-template-columns: 1fr 340px; gap:20px; margin-top:20px;">
+          <!-- LEFT: Filters + Table -->
+          <div>
+            <div class="filterbar">
+              <input type="search" id="iSearch" placeholder="Search SKU, name, supplier..." />
+              <select class="sel" id="iCat"><option value="">All categories</option></select>
+              <select class="sel" id="iSup"><option value="">All suppliers</option></select>
+              <label style="display:flex;align-items:center;gap:8px;font-size:0.9rem;color:var(--ink-700);">
+                <input type="checkbox" id="iLow" /> Low stock only
+              </label>
+            </div>
+
+            <div class="panel" style="margin-top:16px;">
+              <div class="panel-body" style="padding:0;">
+                <table class="tbl" id="invTbl">
+                  <thead>
+                    <tr>
+                      <th>SKU</th><th>Item</th><th>Category</th>
+                      <th style="text-align:right;">Stock</th>
+                      <th>Level</th>
+                      <th style="text-align:right;">Value</th>
+                      <th>Supplier</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody id="invRows"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- RIGHT: Side panel - usage + reorder -->
+          <div>
+            <div class="panel">
+              <div class="panel-head">
+                <h3>Recent material usage</h3>
+                <span class="small">Last 7 days</span>
+              </div>
+              <div class="panel-body" id="usageBody"></div>
+            </div>
+
+            <div class="panel" style="margin-top:16px;">
+              <div class="panel-head">
+                <h3>Suppliers</h3>
+              </div>
+              <div class="panel-body" id="supBody"></div>
+            </div>
+
+            <div class="panel" style="margin-top:16px;background:linear-gradient(135deg,var(--navy-900),#15315a);color:#fff;">
+              <div class="panel-body">
+                <h3 style="color:#fff;">📦 Standing orders</h3>
+                <p class="small" style="color:rgba(255,255,255,0.78);margin-top:6px;">Auto-reorder is enabled for paints. PO drafts are issued when stock dips below 50% of reorder threshold.</p>
+                <button class="btn btn-gold" style="margin-top:10px;width:100%;" onclick="toast('Auto-reorder rules updated')">⚙ Configure rules</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- Reorder modal -->
+  <div id="poModal" class="hidden"></div>
+  <!-- Add-SKU modal — separate host so opening Add doesn't blow away an
+       in-flight Reorder modal (rare but possible). -->
+  <div id="skuModal" class="hidden"></div>
+
+  <script src="../assets/shared.js"></script>
+  <script src="assets/admin-shared.js"></script>
+  <script>
+    adminMount('inventory');
+
+    const f = { search:'', cat:'', sup:'', low:false };
+
+    // Map job tags → SKU prefixes that get consumed (used for synthetic usage feed)
+    const TAG_TO_SKU = {
+      'Interior':    ['DLX-WS-IVR','DLX-WS-WHT','LEY-MT-OFW','BGR-PRM-WHT','TAP-MSK','RLR-9IN','DRP-CTH'],
+      'Decorative':  ['AZR-EML-GRN','CRL-GL-BLK','BRH-SET','TAP-MSK','RLR-9IN'],
+      'Commercial':  ['DLX-WS-WHT','BGR-PRM-WHT','EPX-CLR','DRP-CTH','RLR-9IN'],
+      'Residential': ['DLX-WS-IVR','LEY-MT-OFW','BGR-PRM-WHT','TAP-MSK'],
+      'Specialty':   ['EPX-CLR','RF-ALUM'],
+      'Roof':        ['RF-ALUM','BRH-SET']
+    };
+
+    function levelClass(item) {
+      if (item.stock <= item.reorder * 0.5) return 'low';
+      if (item.stock <= item.reorder)       return 'warn';
+      return '';
+    }
+    function levelLabel(item) {
+      const cls = levelClass(item);
+      return cls === 'low' ? 'Critical' : cls === 'warn' ? 'Low' : 'OK';
+    }
+
+    function render() {
+      const s = getStore();
+
+      // Populate dropdowns once
+      const catSel = document.getElementById('iCat');
+      const supSel = document.getElementById('iSup');
+      if (!catSel.dataset.loaded) {
+        const cats = [...new Set(s.inventory.map(i => i.category))].sort();
+        catSel.insertAdjacentHTML('beforeend', cats.map(c=>`<option>${c}</option>`).join(''));
+        const sups = [...new Set(s.inventory.map(i => i.supplier))].sort();
+        supSel.insertAdjacentHTML('beforeend', sups.map(c=>`<option>${c}</option>`).join(''));
+        catSel.dataset.loaded = '1';
+      }
+
+      // KPI strip
+      const skus = s.inventory.length;
+      const lows = s.inventory.filter(i => i.stock <= i.reorder).length;
+      const value = s.inventory.reduce((a,i) => a + i.stock * i.cost, 0);
+      const supplierCounts = {};
+      s.inventory.forEach(i => supplierCounts[i.supplier] = (supplierCounts[i.supplier]||0) + 1);
+      const topSup = Object.entries(supplierCounts).sort((a,b)=>b[1]-a[1])[0];
+      const consumables = s.inventory.filter(i => i.category === 'Consumable').length;
+
+      document.getElementById('skuCount').textContent = skus;
+      document.getElementById('invKpis').innerHTML = `
+        <div class="kpi"><div class="label">Total SKUs</div><div class="value">${skus}</div><div class="trend up">${consumables} consumables</div></div>
+        <div class="kpi"><div class="label">Inventory value</div><div class="value">${fmtGHS(value)}</div><div class="trend up">at cost</div></div>
+        <div class="kpi"><div class="label">Low stock</div><div class="value" style="color:${lows>0?'var(--warn)':'var(--green)'};">${lows}</div><div class="trend ${lows>0?'down':'up'}">${lows>0?'needs attention':'all healthy'}</div></div>
+        <div class="kpi"><div class="label">Top supplier</div><div class="value" style="font-size:1.2rem;">${topSup[0]}</div><div class="trend up">${topSup[1]} SKUs</div></div>
+      `;
+
+      // Low-stock alert banner
+      const lowItems = s.inventory.filter(i => i.stock <= i.reorder);
+      const banner = document.getElementById('alertBanner');
+      if (lowItems.length) {
+        banner.innerHTML = `
+          <div class="panel" style="margin-top:16px;border:1px solid var(--warn);background:#FFFBEB;">
+            <div class="panel-body" style="display:flex;align-items:center;gap:14px;">
+              <div style="width:42px;height:42px;border-radius:50%;background:var(--warn);color:#fff;display:flex;align-items:center;justify-content:center;font-size:1.2rem;flex-shrink:0;">⚠</div>
+              <div style="flex:1;">
+                <strong>${lowItems.length} SKU${lowItems.length>1?'s':''} at or below reorder threshold.</strong>
+                <div class="small" style="margin-top:2px;">${lowItems.slice(0,3).map(i=>i.name.split(' ').slice(0,3).join(' ')).join(' · ')}${lowItems.length>3?' +'+(lowItems.length-3)+' more':''}</div>
+              </div>
+              <button class="btn btn-primary" onclick="reorderAll()">Reorder all</button>
+            </div>
+          </div>
+        `;
+      } else {
+        banner.innerHTML = '';
+      }
+
+      // Filtered table rows
+      const rows = s.inventory.filter(i => {
+        if (f.search) { const q=f.search.toLowerCase(); if (!(i.sku+' '+i.name+' '+i.supplier).toLowerCase().includes(q)) return false; }
+        if (f.cat && i.category !== f.cat) return false;
+        if (f.sup && i.supplier !== f.sup) return false;
+        if (f.low && i.stock > i.reorder) return false;
+        return true;
+      });
+
+      document.getElementById('invRows').innerHTML = rows.map(i => {
+        const lc = levelClass(i);
+        const fillPct = Math.min(100, Math.round((i.stock / (i.reorder * 2)) * 100));
+        const lvLabel = levelLabel(i);
+        const lvBadge = lc === 'low' ? 'st-warn' : lc === 'warn' ? 'st-qa' : 'st-done';
+        return `
+          <tr>
+            <td><code style="font-size:0.78rem;color:var(--ink-500);">${i.sku}</code></td>
+            <td><strong>${i.name}</strong></td>
+            <td><span class="small">${i.category}</span></td>
+            <td style="text-align:right;"><strong>${i.stock}</strong> <span class="small">${i.unit}</span></td>
+            <td>
+              <div style="display:flex;align-items:center;gap:8px;">
+                <div class="stock-bar ${lc}" style="flex:1;min-width:80px;"><span style="width:${fillPct}%;"></span></div>
+                <span class="st ${lvBadge}" style="font-size:0.7rem;">${lvLabel}</span>
+              </div>
+              <div class="small" style="margin-top:2px;">reorder at ${i.reorder}</div>
+            </td>
+            <td style="text-align:right;">${fmtGHS(i.stock * i.cost)}</td>
+            <td><span class="small">${i.supplier}</span></td>
+            <td style="text-align:right;">
+              ${ i.stock <= i.reorder
+                ? `<button class="btn btn-outline" style="padding:6px 10px;font-size:0.78rem;" onclick="openPO('${i.sku}')">Reorder</button>`
+                : `<button class="btn btn-outline" style="padding:6px 10px;font-size:0.78rem;color:var(--ink-500);" onclick="openPO('${i.sku}')">Adjust</button>` }
+            </td>
+          </tr>
+        `;
+      }).join('') || `<tr><td colspan="8" class="small" style="text-align:center;padding:20px;">No SKUs match your filters.</td></tr>`;
+
+      // Recent usage panel — synthesise from on_site/qa/completed jobs in last 7 days
+      const cutoff = Date.now() - 7*86400*1000;
+      const recentJobs = s.jobs.filter(j => ['on_site','qa','completed'].includes(j.stage) && new Date(j.date).getTime() > cutoff - 5*86400*1000);
+      const usage = [];
+      recentJobs.forEach(j => {
+        const tags = j.tags || [];
+        const skuSet = new Set();
+        tags.forEach(t => (TAG_TO_SKU[t]||[]).forEach(x => skuSet.add(x)));
+        const skus = [...skuSet].slice(0,3);
+        skus.forEach((sk, idx) => {
+          const item = s.inventory.find(i=>i.sku===sk);
+          if (item) usage.push({ job:j, item, qty: 1 + (idx + j.area % 3) });
+        });
+      });
+
+      document.getElementById('usageBody').innerHTML = usage.slice(0,8).map(u => `
+        <div style="display:flex;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px solid var(--ink-100);">
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:0.86rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${u.item.name.split(' — ')[0]}</div>
+            <div class="small">${u.job.ref} · ${u.job.customer}</div>
+          </div>
+          <div style="text-align:right;">
+            <strong style="font-size:0.9rem;">${u.qty} ${u.item.unit}</strong>
+            <div class="small">${fmtGHS(u.qty * u.item.cost)}</div>
+          </div>
+        </div>
+      `).join('') || '<p class="small">No recent usage.</p>';
+
+      // Suppliers panel
+      const supplierData = Object.entries(supplierCounts).map(([name, count]) => {
+        const items = s.inventory.filter(i => i.supplier === name);
+        const totalValue = items.reduce((a,i) => a + i.stock * i.cost, 0);
+        const lowCount = items.filter(i => i.stock <= i.reorder).length;
+        return { name, count, totalValue, lowCount };
+      }).sort((a,b) => b.totalValue - a.totalValue);
+
+      document.getElementById('supBody').innerHTML = supplierData.map(sp => `
+        <div style="padding:10px 0;border-bottom:1px solid var(--ink-100);">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <strong style="font-size:0.9rem;">${sp.name}</strong>
+            ${sp.lowCount ? `<span class="st st-warn" style="font-size:0.7rem;">${sp.lowCount} low</span>` : ''}
+          </div>
+          <div class="small">${sp.count} SKU${sp.count>1?'s':''} · ${fmtGHS(sp.totalValue)} value</div>
+        </div>
+      `).join('');
+    }
+
+    // Filter wiring
+    document.getElementById('iSearch').addEventListener('input', e => { f.search = e.target.value; render(); });
+    document.getElementById('iCat').addEventListener('change', e => { f.cat = e.target.value; render(); });
+    document.getElementById('iSup').addEventListener('change', e => { f.sup = e.target.value; render(); });
+    document.getElementById('iLow').addEventListener('change', e => { f.low = e.target.checked; render(); });
+
+    // Reorder modal
+    function openPO(sku) {
+      const s = getStore();
+      const item = s.inventory.find(i => i.sku === sku);
+      if (!item) return;
+      const suggested = Math.max(item.reorder * 2 - item.stock, item.reorder);
+      const host = document.getElementById('poModal');
+      host.classList.remove('hidden');
+      host.innerHTML = `
+        <div class="modal-backdrop" onclick="if(event.target===this)closePO()">
+          <div class="modal" style="max-width:520px;">
+            <div class="modal-head">
+              <div>
+                <h3>Reorder · ${item.name}</h3>
+                <div class="small">SKU ${item.sku} · ${item.supplier}</div>
+              </div>
+              <div class="close-btn" onclick="closePO()">✕</div>
+            </div>
+            <div class="modal-body">
+              <div class="kpi-grid" style="grid-template-columns:repeat(3,1fr);">
+                <div class="kpi"><div class="label">Current stock</div><div class="value">${item.stock}</div></div>
+                <div class="kpi"><div class="label">Reorder at</div><div class="value">${item.reorder}</div></div>
+                <div class="kpi"><div class="label">Unit cost</div><div class="value">${fmtGHS(item.cost)}</div></div>
+              </div>
+              <div style="margin-top:18px;">
+                <label class="small">Order quantity (${item.unit})</label>
+                <input type="number" id="poQty" value="${suggested}" min="1" style="width:100%;padding:10px;border:1px solid var(--ink-100);border-radius:8px;font-size:1rem;margin-top:4px;" oninput="updatePOTotal('${sku}')" />
+                <div class="small" style="margin-top:4px;">Suggested: ${suggested} ${item.unit} (brings stock to ~${item.reorder * 2})</div>
+              </div>
+              <div class="flex-between" style="margin-top:18px;padding:12px;background:var(--ink-50);border-radius:10px;">
+                <span>Total cost</span>
+                <strong id="poTotal" style="font-size:1.2rem;">${fmtGHS(suggested * item.cost)}</strong>
+              </div>
+              <div style="display:flex;gap:8px;margin-top:18px;">
+                <button class="btn btn-outline" style="flex:1;" onclick="closePO()">Cancel</button>
+                <button class="btn btn-primary" style="flex:2;" onclick="confirmPO('${sku}')">Place order</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+    function closePO() {
+      document.getElementById('poModal').classList.add('hidden');
+      document.getElementById('poModal').innerHTML = '';
+    }
+    function updatePOTotal(sku) {
+      const item = getStore().inventory.find(i => i.sku === sku);
+      const qty = Number(document.getElementById('poQty').value) || 0;
+      document.getElementById('poTotal').textContent = fmtGHS(qty * item.cost);
+    }
+    function confirmPO(sku) {
+      const qty = Number(document.getElementById('poQty').value) || 0;
+      if (qty <= 0) { toast('Enter a valid quantity', 'warn'); return; }
+      mutate(store => {
+        const item = store.inventory.find(i => i.sku === sku);
+        item.stock += qty;
+        store.activity.unshift({ kind:'po', who:'Inventory', what:`PO placed: ${qty} × ${item.name}`, amount: qty*item.cost, t: Date.now() });
+      });
+      closePO();
+      toast(`Stock replenished — ${qty} units added`);
+      render();
+      updateNavCounts();
+    }
+    function reorderAll() {
+      mutate(store => {
+        store.inventory.forEach(item => {
+          if (item.stock <= item.reorder) {
+            const qty = Math.max(item.reorder * 2 - item.stock, item.reorder);
+            item.stock += qty;
+            store.activity.unshift({ kind:'po', who:'Inventory', what:`PO placed: ${qty} × ${item.name}`, amount: qty*item.cost, t: Date.now() });
+          }
+        });
+      });
+      toast('All low-stock SKUs reordered');
+      render();
+      updateNavCounts();
+    }
+
+    // ─────────────────────────────────────────────
+    // Add SKU — modal that drops a fresh row into the inventory table.
+    // Categories and suppliers come from the existing inventory so we don't
+    // ask the dispatcher to invent them; the supplier picker has a free-text
+    // 'New supplier…' option so the first time you add one, you still can.
+    // ─────────────────────────────────────────────
+    function openAddSKU() {
+      const s = getStore();
+      const categories = [...new Set(s.inventory.map(i => i.category))].sort();
+      const suppliers  = [...new Set(s.inventory.map(i => i.supplier))].sort();
+      const host = document.getElementById('skuModal');
+      host.classList.remove('hidden');
+      host.innerHTML = `
+        <div class="modal-backdrop" onclick="if(event.target===this)closeAddSKU()">
+          <div class="modal" style="max-width:560px;">
+            <div class="modal-head">
+              <div>
+                <h3 style="margin:0;">Add a SKU</h3>
+                <div class="small" style="color:var(--ink-500);">Lands in the inventory table immediately. Counts toward low-stock alerts on the next render.</div>
+              </div>
+              <div class="close-btn" onclick="closeAddSKU()">✕</div>
+            </div>
+            <div class="modal-body">
+              <div style="display:grid;gap:14px;">
+                <div style="display:grid;grid-template-columns:1fr 1.4fr;gap:12px;">
+                  <div>
+                    <label style="display:block;font-size:0.82rem;font-weight:600;color:var(--ink-700);margin-bottom:4px;">SKU code <span style="color:var(--red);">*</span></label>
+                    <input id="asSku" type="text" placeholder="DLX-WS-NVY" style="width:100%;padding:10px 12px;border:1.5px solid var(--ink-300);border-radius:9px;font-size:0.94rem;font-family:inherit;text-transform:uppercase;" />
+                  </div>
+                  <div>
+                    <label style="display:block;font-size:0.82rem;font-weight:600;color:var(--ink-700);margin-bottom:4px;">Item name <span style="color:var(--red);">*</span></label>
+                    <input id="asName" type="text" placeholder="Dulux Weathershield Navy 4L" style="width:100%;padding:10px 12px;border:1.5px solid var(--ink-300);border-radius:9px;font-size:0.94rem;font-family:inherit;" />
+                  </div>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                  <div>
+                    <label style="display:block;font-size:0.82rem;font-weight:600;color:var(--ink-700);margin-bottom:4px;">Category</label>
+                    <select id="asCat" style="width:100%;padding:10px 12px;border:1.5px solid var(--ink-300);border-radius:9px;font-size:0.94rem;font-family:inherit;background:#fff;">
+                      ${categories.map(c => `<option>${c}</option>`).join('')}
+                      <option value="__new">+ New category…</option>
+                    </select>
+                    <input id="asCatNew" type="text" placeholder="Type new category" style="display:none;width:100%;margin-top:6px;padding:10px 12px;border:1.5px solid var(--ink-300);border-radius:9px;font-size:0.94rem;font-family:inherit;" />
+                  </div>
+                  <div>
+                    <label style="display:block;font-size:0.82rem;font-weight:600;color:var(--ink-700);margin-bottom:4px;">Supplier</label>
+                    <select id="asSup" style="width:100%;padding:10px 12px;border:1.5px solid var(--ink-300);border-radius:9px;font-size:0.94rem;font-family:inherit;background:#fff;">
+                      ${suppliers.map(c => `<option>${c}</option>`).join('')}
+                      <option value="__new">+ New supplier…</option>
+                    </select>
+                    <input id="asSupNew" type="text" placeholder="Type new supplier" style="display:none;width:100%;margin-top:6px;padding:10px 12px;border:1.5px solid var(--ink-300);border-radius:9px;font-size:0.94rem;font-family:inherit;" />
+                  </div>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px;">
+                  <div>
+                    <label style="display:block;font-size:0.82rem;font-weight:600;color:var(--ink-700);margin-bottom:4px;">Stock</label>
+                    <input id="asStock" type="number" min="0" step="1" value="0" style="width:100%;padding:10px 12px;border:1.5px solid var(--ink-300);border-radius:9px;font-size:0.94rem;font-family:inherit;" />
+                  </div>
+                  <div>
+                    <label style="display:block;font-size:0.82rem;font-weight:600;color:var(--ink-700);margin-bottom:4px;">Unit</label>
+                    <select id="asUnit" style="width:100%;padding:10px 12px;border:1.5px solid var(--ink-300);border-radius:9px;font-size:0.94rem;font-family:inherit;background:#fff;">
+                      <option>4L tin</option><option>1L tin</option><option>10L drum</option><option>20L drum</option><option>roll</option><option>set</option><option>each</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style="display:block;font-size:0.82rem;font-weight:600;color:var(--ink-700);margin-bottom:4px;">Reorder at</label>
+                    <input id="asReorder" type="number" min="0" step="1" value="6" style="width:100%;padding:10px 12px;border:1.5px solid var(--ink-300);border-radius:9px;font-size:0.94rem;font-family:inherit;" />
+                  </div>
+                  <div>
+                    <label style="display:block;font-size:0.82rem;font-weight:600;color:var(--ink-700);margin-bottom:4px;">Unit cost (GHS) <span style="color:var(--red);">*</span></label>
+                    <input id="asCost" type="number" min="0" step="1" placeholder="180" style="width:100%;padding:10px 12px;border:1.5px solid var(--ink-300);border-radius:9px;font-size:0.94rem;font-family:inherit;" />
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="flex-between" style="padding:16px 20px;border-top:1px solid var(--ink-100);">
+              <button class="btn btn-ghost" onclick="closeAddSKU()">Cancel</button>
+              <button class="btn btn-primary" onclick="submitAddSKU()">Add SKU</button>
+            </div>
+          </div>
+        </div>
+      `;
+      // Toggle the free-text 'new …' inputs when the dropdown picks the sentinel option.
+      const wireToggle = (selectId, inputId) => {
+        document.getElementById(selectId).addEventListener('change', e => {
+          document.getElementById(inputId).style.display = (e.target.value === '__new') ? '' : 'none';
+        });
+      };
+      wireToggle('asCat', 'asCatNew');
+      wireToggle('asSup', 'asSupNew');
+      setTimeout(() => document.getElementById('asSku').focus(), 30);
+    }
+    function closeAddSKU() {
+      const h = document.getElementById('skuModal');
+      h.classList.add('hidden'); h.innerHTML = '';
+    }
+    function submitAddSKU() {
+      const sku    = document.getElementById('asSku').value.trim().toUpperCase();
+      const name   = document.getElementById('asName').value.trim();
+      const cost   = parseFloat(document.getElementById('asCost').value) || 0;
+      if (!sku)  { toast('SKU code is required.', 'warn'); return; }
+      if (!name) { toast('Item name is required.', 'warn'); return; }
+      if (!cost) { toast('Unit cost is required.', 'warn'); return; }
+      // Reject duplicate SKUs.
+      if (getStore().inventory.find(i => i.sku === sku)) {
+        toast(`SKU ${sku} already exists.`, 'warn'); return;
+      }
+      const catSel = document.getElementById('asCat').value;
+      const supSel = document.getElementById('asSup').value;
+      const category = catSel === '__new' ? (document.getElementById('asCatNew').value.trim() || 'Other') : catSel;
+      const supplier = supSel === '__new' ? (document.getElementById('asSupNew').value.trim() || 'Other')  : supSel;
+      const stock    = parseInt(document.getElementById('asStock').value, 10) || 0;
+      const unit     = document.getElementById('asUnit').value;
+      const reorder  = parseInt(document.getElementById('asReorder').value, 10) || 0;
+
+      const newSKU = { sku, name, category, supplier, stock, unit, reorder, cost };
+      mutate(store => { store.inventory.unshift(newSKU); });
+      try {
+        fetch('/api/admin/inventory', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (pmAuth.token() || '') },
+          body: JSON.stringify(newSKU)
+        }).catch(() => { /* offline */ });
+      } catch (e) { /* silent */ }
+      if (typeof pmActivity !== 'undefined') {
+        pmActivity.emit({
+          kind: 'system', title: `New SKU added: ${name}`,
+          sub: `${sku} · ${category} · ${supplier} · ${fmtGHS(cost)} per ${unit}`,
+          source: { role: 'admin', name: (typeof pmAuth!=='undefined' && pmAuth.user()?.name) || 'Admin' }
+        });
+      }
+      closeAddSKU();
+      toast(`${sku} added to inventory.`);
+      render();
+      updateNavCounts();
+    }
+
+    // CSV export
+    function exportCSV() {
+      const s = getStore();
+      const lines = [['SKU','Item','Category','Stock','Unit','Reorder','Cost','Value','Supplier'].join(',')];
+      s.inventory.forEach(i => {
+        lines.push([i.sku, `"${i.name}"`, `"${i.category}"`, i.stock, i.unit, i.reorder, i.cost, i.stock*i.cost, `"${i.supplier}"`].join(','));
+      });
+      const blob = new Blob([lines.join('\n')], { type:'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'paint-masters-inventory.csv'; a.click();
+      URL.revokeObjectURL(url);
+      toast('Inventory exported');
+    }
+
+    render();
+  </script>
+</body>
+</html>

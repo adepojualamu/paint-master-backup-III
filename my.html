@@ -1,0 +1,294 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" type="image/png" href="assets/img/favicon.png" />
+  <title>My Account — Paint Masters</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/styles.css" />
+  <style>
+    /* Member dashboard — uses global tokens; no fresh palette. */
+    .member-hero {
+      background:
+        radial-gradient(900px 400px at 90% 0%, rgba(245,184,0,0.18), transparent 60%),
+        linear-gradient(180deg, #F7FAFD 0%, #FFFFFF 90%);
+      padding: 56px 24px 24px;
+    }
+    .member-hero h1 { margin: 6px 0 6px; }
+    .member-hero .lede { color: var(--ink-700); max-width: 620px; }
+
+    .stat-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-top: 28px; }
+    @media (max-width: 760px) { .stat-row { grid-template-columns: repeat(2, 1fr); } }
+    .stat-card {
+      background: #fff; border: 1px solid var(--ink-100); border-radius: 14px;
+      padding: 18px 20px;
+    }
+    .stat-card .lbl { font-size: 0.78rem; color: var(--ink-500); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }
+    .stat-card .val { font-family: var(--font-display); font-size: 1.8rem; color: var(--navy-900); margin-top: 4px; font-weight: 700; }
+    .stat-card .delta { font-size: 0.78rem; color: var(--green); margin-top: 2px; }
+
+    .grid-2 { display: grid; grid-template-columns: 1.4fr 1fr; gap: 24px; align-items: start; }
+    @media (max-width: 900px) { .grid-2 { grid-template-columns: 1fr; } }
+
+    .panel { background: #fff; border: 1px solid var(--ink-100); border-radius: 14px; padding: 20px 22px; }
+    .panel + .panel { margin-top: 16px; }
+    .panel h3 { margin: 0; }
+    .panel .panel-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+
+    .booking-card {
+      display: grid; grid-template-columns: auto 1fr auto; gap: 14px; align-items: center;
+      padding: 14px; border: 1px solid var(--ink-100); border-radius: 12px;
+      margin-bottom: 10px; transition: border-color 0.15s, transform 0.05s;
+    }
+    .booking-card:hover { border-color: var(--ink-300); }
+    .booking-card .cover {
+      width: 56px; height: 56px; border-radius: 10px;
+      display: grid; place-items: center; font-size: 1.5rem;
+      background: var(--gold-100);
+    }
+    .booking-card strong { display: block; color: var(--navy-900); font-size: 0.95rem; }
+    .booking-card .meta { font-size: 0.82rem; color: var(--ink-500); margin-top: 2px; }
+    .booking-card .right { text-align: right; }
+    .booking-card .right .amount { font-family: var(--font-display); color: var(--navy-900); font-weight: 700; }
+    .booking-card .right .status { font-size: 0.78rem; padding: 3px 9px; border-radius: 999px; display: inline-block; margin-top: 4px; font-weight: 600; }
+    .status.in-progress { background: #DBEAFE; color: #1E3A8A; }
+    .status.scheduled   { background: #FEF3C7; color: #854D0E; }
+    .status.completed   { background: #D1FAE5; color: #065F46; }
+    .status.qa          { background: #FCE7F3; color: #831843; }
+
+    .empty-state {
+      text-align: center; padding: 30px 20px; color: var(--ink-500);
+      border: 1px dashed var(--ink-300); border-radius: 12px;
+    }
+    .empty-state .ico { font-size: 2rem; margin-bottom: 8px; }
+
+    .quick-actions { display: grid; gap: 10px; }
+    .quick-actions a {
+      display: flex; gap: 12px; align-items: center;
+      padding: 12px 14px; border: 1px solid var(--ink-100); border-radius: 12px;
+      color: var(--ink-700); font-weight: 500; transition: background 0.15s, border-color 0.15s;
+    }
+    .quick-actions a:hover { border-color: var(--navy-700); background: var(--ink-50); color: var(--navy-900); }
+    .quick-actions .ico { width: 36px; height: 36px; background: var(--gold-100); border-radius: 9px; display: grid; place-items: center; font-size: 1.1rem; flex: 0 0 auto; }
+    .quick-actions strong { display: block; font-size: 0.92rem; color: var(--navy-900); }
+    .quick-actions small { font-size: 0.78rem; color: var(--ink-500); }
+
+    .warranty-row {
+      display: flex; justify-content: space-between; padding: 12px 0;
+      border-bottom: 1px solid var(--ink-100); font-size: 0.9rem;
+    }
+    .warranty-row:last-child { border-bottom: 0; }
+    .warranty-row .left strong { display: block; color: var(--navy-900); }
+    .warranty-row .left small { color: var(--ink-500); font-size: 0.78rem; }
+    .warranty-row .pill {
+      font-size: 0.78rem; padding: 3px 9px; border-radius: 999px;
+      background: #D1FAE5; color: #065F46; font-weight: 600;
+    }
+
+    .profile-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--ink-100); font-size: 0.9rem; }
+    .profile-row:last-child { border-bottom: 0; }
+    .profile-row span { color: var(--ink-500); }
+    .profile-row strong { color: var(--navy-900); }
+  </style>
+</head>
+<body>
+  <div id="pm-nav"></div>
+
+  <!-- Member-only gate. Runs before the rest of the page paints data. -->
+  <script src="assets/shared.js"></script>
+  <script>
+    // pmRequireAuth redirects to login.html?next=my.html if not signed in.
+    // Returns the user object on success, false on redirect.
+    const me = pmRequireAuth();
+    // If we're being redirected, stop here so we don't render anything.
+    if (!me) { /* page is unloading */ }
+  </script>
+
+  <section class="member-hero">
+    <div class="container">
+      <span class="eyebrow">Member area</span>
+      <h1 id="welcomeTitle">Welcome back.</h1>
+      <p class="lede" id="welcomeSub">Track your projects, manage your warranty, and book another job in one click.</p>
+
+      <div class="stat-row">
+        <div class="stat-card"><div class="lbl">Active jobs</div>      <div class="val" id="statActive">—</div><div class="delta" id="statActiveSub">In progress now</div></div>
+        <div class="stat-card"><div class="lbl">Completed</div>        <div class="val" id="statDone">—</div>  <div class="delta" id="statDoneSub">Lifetime</div></div>
+        <div class="stat-card"><div class="lbl">Warranty cover</div>   <div class="val" id="statWarranty">—</div><div class="delta" id="statWarrantySub">Active certificates</div></div>
+        <div class="stat-card"><div class="lbl">Avg satisfaction</div> <div class="val" id="statRating">—</div><div class="delta" id="statRatingSub">Reviews you've left</div></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" style="padding-top:24px;">
+    <div class="container">
+      <div class="grid-2">
+
+        <!-- Bookings + warranty -->
+        <div>
+          <div class="panel" id="bookings">
+            <div class="panel-head">
+              <h3>Your bookings</h3>
+              <a href="quote.html" class="btn btn-gold" style="padding:8px 16px;font-size:0.85rem;">＋ New quote</a>
+            </div>
+            <div id="bookingsList"></div>
+          </div>
+
+          <div class="panel" id="warranty">
+            <div class="panel-head">
+              <h3>Warranty certificates</h3>
+              <span class="small" style="color:var(--ink-500);">12-month finish guarantee on every completed job.</span>
+            </div>
+            <div id="warrantyList"></div>
+          </div>
+        </div>
+
+        <!-- Quick actions + profile -->
+        <div>
+          <div class="panel">
+            <div class="panel-head"><h3>Quick actions</h3></div>
+            <div class="quick-actions">
+              <a href="quote.html"><span class="ico">⚡</span><div><strong>Get an instant quote</strong><small>Add another job to your roster</small></div></a>
+              <a href="track.html"><span class="ico">📍</span><div><strong>Track active job</strong><small>Live updates from the site</small></div></a>
+              <a href="artisans.html"><span class="ico">🎨</span><div><strong>Browse Paint Masters</strong><small>Pick a specialist by region</small></div></a>
+              <a href="services.html"><span class="ico">🛠️</span><div><strong>See all services</strong><small>Interior, exterior, decorative, more</small></div></a>
+            </div>
+          </div>
+
+          <div class="panel" id="profile">
+            <div class="panel-head"><h3>Your profile</h3><a href="#" id="editProfile" class="small" style="color:var(--navy-900);font-weight:600;">Edit</a></div>
+            <div class="profile-row"><span>Name</span><strong id="pName">—</strong></div>
+            <div class="profile-row"><span>Phone</span><strong id="pPhone">—</strong></div>
+            <div class="profile-row"><span>Email</span><strong id="pEmail">—</strong></div>
+            <div class="profile-row"><span>Member since</span><strong>Apr 2026</strong></div>
+            <div style="margin-top:14px;display:flex;gap:8px;">
+              <a href="#" class="btn btn-outline" style="flex:1;padding:10px;font-size:0.85rem;" id="signOutBtn">Sign out</a>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <div id="pm-footer"></div>
+
+  <script>
+    // Mount the standard nav + footer with auth widget.
+    pmMountLayout('my');
+
+    // If the auth gate above redirected us, `me` will be falsy. Halt rendering
+    // the rest so we don't throw before the page actually unloads.
+    if (!me) {
+      // no-op body; everything below sits inside the guard
+    } else {
+
+    // Personalise the hero.
+    document.getElementById('welcomeTitle').textContent =
+      `Welcome back, ${(me.name || 'friend').split(' ')[0]} 👋`;
+    document.getElementById('pName').textContent  = me.name || '—';
+    document.getElementById('pPhone').textContent = me.phone || '—';
+    document.getElementById('pEmail').textContent = me.email || 'Not set';
+
+    // Sign-out button.
+    document.getElementById('signOutBtn').addEventListener('click', (e) => {
+      e.preventDefault();
+      pmAuth.logout();
+      location.href = 'index.html';
+    });
+    document.getElementById('editProfile').addEventListener('click', (e) => {
+      e.preventDefault();
+      pmToast('Profile editor coming next release. Reach support to update for now.');
+    });
+
+    // ─────────────────────────────────────────────
+    // Demo booking data — keyed off the signed-in user's phone so each
+    // demo account sees a slightly different roster. In production this
+    // section will fetch from GET /api/bookings.
+    // ─────────────────────────────────────────────
+    const DEMO_BOOKINGS_BY_PHONE = {
+      '0244200001': [
+        { ref: 'PM-482015', service: 'Interior Wall Repaint', address: '12 Josif Broz Tito Ave, East Legon', date: '2026-05-02', amount: 4465, status: 'scheduled',   icon: '🛋️' },
+        { ref: 'PM-481982', service: 'Accent Walls',           address: 'Spintex Road, Baatsona',           date: '2026-04-27', amount: 5200, status: 'in-progress', icon: '🎨' },
+        { ref: 'PM-481801', service: 'Exterior Façade',        address: 'Adabraka, Accra',                  date: '2026-04-22', amount: 18900, status: 'completed',  icon: '🏠' }
+      ],
+      // Brand-new customers (any phone not in the demo seed above) see a clean
+      // empty state — the empty-state block below picks it up. Previously we
+      // injected a fake "Demo Project" with a GHS 4,200 value which surfaced
+      // on real customer accounts and made it look like they'd already booked.
+      _default: []
+    };
+    const bookings = DEMO_BOOKINGS_BY_PHONE[me.phone] || DEMO_BOOKINGS_BY_PHONE._default;
+
+    // Render KPIs.
+    const active     = bookings.filter(b => b.status === 'in-progress' || b.status === 'scheduled' || b.status === 'qa').length;
+    const completed  = bookings.filter(b => b.status === 'completed').length;
+    document.getElementById('statActive').textContent    = active;
+    document.getElementById('statDone').textContent      = completed;
+    document.getElementById('statWarranty').textContent  = completed;  // each completed = 1 warranty
+    document.getElementById('statRating').textContent    = completed > 0 ? '4.9' : '—';
+
+    // Render booking cards.
+    const list = document.getElementById('bookingsList');
+    if (bookings.length === 0) {
+      list.innerHTML = `
+        <div class="empty-state">
+          <div class="ico">🎨</div>
+          <p>No bookings yet — start with a quote and a Paint Master will be on your way.</p>
+          <a href="quote.html" class="btn btn-gold">Get instant quote →</a>
+        </div>`;
+    } else {
+      list.innerHTML = bookings.map(b => `
+        <a href="track.html?ref=${encodeURIComponent(b.ref)}" class="booking-card" style="text-decoration:none;">
+          <div class="cover">${b.icon}</div>
+          <div>
+            <strong>${b.service}</strong>
+            <div class="meta">${b.address} · ${pmFmtDate(b.date)}</div>
+            <div class="meta" style="font-family:var(--font-display);font-size:0.78rem;letter-spacing:0.05em;">${b.ref}</div>
+          </div>
+          <div class="right">
+            <div class="amount">${pmFormatGHS(b.amount)}</div>
+            <div class="status ${b.status}">${b.status.replace('-', ' ')}</div>
+          </div>
+        </a>
+      `).join('');
+    }
+
+    // Warranty list.
+    const warrantyList = document.getElementById('warrantyList');
+    const warranties = bookings.filter(b => b.status === 'completed');
+    if (warranties.length === 0) {
+      warrantyList.innerHTML = `<div class="empty-state" style="padding:18px;"><small>No active certificates yet — your first warranty issues automatically when a job completes.</small></div>`;
+    } else {
+      warrantyList.innerHTML = warranties.map(b => {
+        // 12-month warranty from job_date.
+        const start = new Date(b.date);
+        const end = new Date(start); end.setMonth(end.getMonth() + 12);
+        const monthsLeft = Math.max(0, Math.round((end - Date.now()) / (1000 * 60 * 60 * 24 * 30)));
+        const certHref = `warranty.html?ref=${encodeURIComponent(b.ref)}`;
+        return `
+          <div class="warranty-row">
+            <div class="left">
+              <strong>${b.service}</strong>
+              <small>${b.ref} · expires ${pmFmtDate(end)} (${monthsLeft} months left)</small>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <span class="pill">Active</span>
+              <a href="${certHref}" target="_blank" rel="noopener"
+                 class="btn btn-outline" style="padding:6px 12px;font-size:0.78rem;font-weight:600;">📄 View / download</a>
+            </div>
+          </div>`;
+      }).join('');
+    }
+
+    function pmFmtDate(d) {
+      const dt = (d instanceof Date) ? d : new Date(d);
+      return dt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+    }
+
+    } // end of `if (me)` guard
+  </script>
+</body>
+</html>

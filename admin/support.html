@@ -1,0 +1,353 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" type="image/png" href="../assets/img/favicon.png" />
+  <title>Help &amp; Support — Paint Masters Dispatcher</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/admin.css" />
+  <style>
+    .help-grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 24px; align-items: start; }
+    @media (max-width: 900px) { .help-grid { grid-template-columns: 1fr; } }
+
+    .faq details {
+      background: #fff; border: 1px solid var(--ink-100); border-radius: 12px;
+      padding: 14px 18px; margin-bottom: 10px;
+    }
+    .faq summary {
+      cursor: pointer; font-weight: 600; color: var(--navy-900);
+      list-style: none; display: flex; justify-content: space-between; align-items: center;
+    }
+    .faq summary::-webkit-details-marker { display: none; }
+    .faq summary::after { content: "+"; color: var(--ink-500); font-size: 1.4rem; line-height: 1; }
+    .faq details[open] summary::after { content: "−"; }
+    .faq details p { margin: 12px 0 0; color: var(--ink-700); line-height: 1.6; }
+    .faq details code { background: var(--ink-100); padding: 1px 6px; border-radius: 4px; font-size: 0.88em; }
+
+    .contact-card {
+      background: #fff; border: 1px solid var(--ink-100); border-radius: 14px; padding: 22px;
+    }
+    .contact-card .row { display: flex; gap: 12px; align-items: flex-start; padding: 10px 0; border-bottom: 1px solid var(--ink-100); }
+    .contact-card .row:last-child { border-bottom: 0; }
+    .contact-card .row .ico { width: 40px; height: 40px; background: var(--gold-100); border-radius: 10px; display: grid; place-items: center; font-size: 1.2rem; flex: 0 0 auto; }
+    .contact-card .row strong { display: block; color: var(--navy-900); font-size: 0.95rem; margin-bottom: 2px; }
+    .contact-card .row small  { color: var(--ink-500); font-size: 0.85rem; }
+    .contact-card .row a      { color: var(--navy-900); font-weight: 600; }
+
+    .ticket-form textarea {
+      width: 100%; padding: 12px; border: 1.5px solid var(--ink-300);
+      border-radius: 10px; font-size: 0.92rem; font-family: inherit; min-height: 110px; resize: vertical;
+    }
+    .ticket-form input {
+      width: 100%; padding: 11px 14px; border: 1.5px solid var(--ink-300);
+      border-radius: 10px; font-size: 0.92rem; font-family: inherit; margin-bottom: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div class="admin-shell">
+    <div id="admin-sidebar"></div>
+    <div class="admin-main">
+      <div id="admin-topbar"></div>
+      <div class="main">
+
+        <div class="page-head">
+          <div>
+            <h1>Help &amp; Support</h1>
+            <div class="sub">Find answers to common dispatch questions or open a ticket with the Paint Masters team.</div>
+          </div>
+        </div>
+
+        <div class="help-grid mt-24">
+
+          <!-- FAQ -->
+          <div>
+            <div class="panel" style="margin-bottom:16px;">
+              <div class="panel-head"><h3>Frequently asked</h3></div>
+              <div class="panel-body faq">
+
+                <details open>
+                  <summary>How do I assign a paint master to a new job?</summary>
+                  <p>From the <strong>Job Board</strong>, drag the job card from the <em>New Quote</em> column into <em>Scheduled</em>, then click the card to choose a paint master. The system filters masters by region and current load. Once assigned, the job moves to <em>Dispatched</em> and the master gets an SMS.</p>
+                </details>
+
+                <details>
+                  <summary>What does the "Reset demo data" button do?</summary>
+                  <p>It clears the local demo state (jobs, customers, inventory) saved in this browser and restores the seeded sample data. It does not affect anything on the server.</p>
+                </details>
+
+                <details>
+                  <summary>How are platform fees and refunds calculated?</summary>
+                  <p>Default platform fee is <code>10%</code> of the booking total. Cancellations more than <code>48 hours</code> before the job get a full refund; later cancellations get a partial refund (80% of total). Both values are configurable in <a href="settings.html">Settings → Pricing</a>.</p>
+                </details>
+
+                <details>
+                  <summary>Why do I see "PM" instead of the official logo?</summary>
+                  <p>That's the fallback shown when the logo file is missing. Drop the official logo at <code>assets/img/paint-masters-logo.png</code> and refresh — it will appear everywhere automatically (nav, footer, sidebar, login).</p>
+                </details>
+
+                <details>
+                  <summary>How do I add another admin user?</summary>
+                  <p>For now, sign-up flow is customer/painter only. To create another admin, run the <code>create-admin</code> script on the server:
+                  <code style="display:block;margin-top:6px;">node backend/scripts/create-admin.js --phone 0244000001 --name "Akosua B."</code></p>
+                </details>
+
+                <details>
+                  <summary>Inventory shows "low" — what's the threshold?</summary>
+                  <p>Each item has a <code>reorder</code> quantity. When stock falls at or below that, the badge appears in the sidebar. Edit reorder thresholds inline on the <a href="inventory.html">Inventory</a> page.</p>
+                </details>
+
+                <details>
+                  <summary>How do I reset my password?</summary>
+                  <p>From <a href="settings.html#security">Settings → Security</a>, enter your current password and a new one. If you've forgotten the current password, use the <a href="../login.html">Forgot password</a> link on the sign-in page (rolling out next release — meanwhile, contact support below).</p>
+                </details>
+
+              </div>
+            </div>
+          </div>
+
+          <!-- Right column: contact + ticket -->
+          <div>
+            <div class="contact-card" style="margin-bottom:16px;">
+              <h3 style="margin-top:0;">Talk to a human</h3>
+              <div class="row">
+                <span class="ico">💬</span>
+                <div><strong>WhatsApp dispatch line</strong><small>Mon–Sat, 7am–8pm GMT</small><a href="https://wa.me/233540000000" target="_blank" rel="noopener">+233 54 000 0000</a></div>
+              </div>
+              <div class="row">
+                <span class="ico">📧</span>
+                <div><strong>Email support</strong><small>Replies within 4 working hours</small><a href="mailto:support@paintmasters.gh">support@paintmasters.gh</a></div>
+              </div>
+              <div class="row">
+                <span class="ico">📞</span>
+                <div><strong>Office line</strong><small>Mon–Fri, 9am–5pm GMT</small><a href="tel:+233302000000">+233 30 200 0000</a></div>
+              </div>
+            </div>
+
+            <div class="panel ticket-form">
+              <div class="panel-head"><h3>Open a ticket</h3></div>
+              <div class="panel-body">
+                <input type="text" id="ticketSubject" placeholder="Subject — e.g. Master can't see assigned jobs" />
+                <textarea id="ticketBody" placeholder="Describe what you tried, what you expected, and what happened. Steps to reproduce help us a lot."></textarea>
+
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px;">
+                  <div>
+                    <label style="display:block;font-size:0.78rem;font-weight:600;color:var(--ink-700);margin-bottom:4px;">Priority</label>
+                    <select id="ticketPriority" style="width:100%;padding:10px 12px;border:1.5px solid var(--ink-300);border-radius:9px;font-size:0.92rem;font-family:inherit;background:#fff;">
+                      <option value="low">Low — when you can</option>
+                      <option value="normal" selected>Normal — within a day</option>
+                      <option value="high">High — same shift</option>
+                      <option value="urgent">Urgent — drop everything</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style="display:block;font-size:0.78rem;font-weight:600;color:var(--ink-700);margin-bottom:4px;">Send via</label>
+                    <select id="ticketChannel" style="width:100%;padding:10px 12px;border:1.5px solid var(--ink-300);border-radius:9px;font-size:0.92rem;font-family:inherit;background:#fff;">
+                      <option value="platform" selected>💬 In-platform notification</option>
+                      <option value="email">✉️ Email support</option>
+                      <option value="whatsapp">🟢 WhatsApp dispatch</option>
+                      <option value="sms">📱 SMS dispatch</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="small" id="ticketChannelHint" style="margin-top:6px;color:var(--ink-500);">In-platform tickets land in the admin notification bell + Live activity feed. Switch to Email / WhatsApp / SMS to also push the message to a dispatcher's device.</div>
+
+                <div style="margin-top:14px;display:flex;gap:8px;justify-content:flex-end;">
+                  <button class="btn btn-outline" onclick="document.getElementById('ticketSubject').value='';document.getElementById('ticketBody').value='';">Clear</button>
+                  <button class="btn btn-primary" onclick="submitTicket()">Send to support</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Tickets list — below the form so the dispatcher can confirm
+                 their ticket made it in, and re-send / mark resolved later. -->
+            <div class="panel" style="margin-top:16px;">
+              <div class="panel-head">
+                <h3>Your tickets</h3>
+                <button class="small" id="clearTickets" style="background:transparent;border:0;color:var(--navy-900);font-weight:600;cursor:pointer;font-size:0.78rem;">Clear all</button>
+              </div>
+              <div class="panel-body" id="ticketsList"></div>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <script src="../assets/shared.js"></script>
+  <script src="assets/admin-shared.js"></script>
+  <script>
+    adminMount('support');
+
+    // ─────────────────────────────────────────────
+    // Ticket store. Single localStorage key shared with the activity bus —
+    // every ticket also fires a pmActivity event so the admin bell + feed
+    // see it. Tickets carry the channel they were dispatched on so the
+    // dispatcher can re-send or escalate later.
+    // ─────────────────────────────────────────────
+    const TICKETS_KEY = 'pm_support_tickets_v2';
+    function loadTickets() {
+      try { return JSON.parse(localStorage.getItem(TICKETS_KEY) || '[]'); }
+      catch (e) { return []; }
+    }
+    function saveTickets(arr) {
+      try { localStorage.setItem(TICKETS_KEY, JSON.stringify(arr)); } catch (e) {}
+    }
+
+    // Channel hint copy switches with the picker so the dispatcher knows
+    // exactly what will happen on submit.
+    document.getElementById('ticketChannel').addEventListener('change', e => {
+      const hint = document.getElementById('ticketChannelHint');
+      const ch = e.target.value;
+      if (ch === 'platform') hint.textContent = 'In-platform tickets land in the admin notification bell + Live activity feed.';
+      else if (ch === 'email')    hint.textContent = `Opens your default mail app addressed to support@paintmasters.gh, with the ticket as the body.`;
+      else if (ch === 'whatsapp') hint.textContent = `Opens WhatsApp Web to the dispatch line (+233 54 000 0000) with the ticket pre-filled.`;
+      else if (ch === 'sms')      hint.textContent = `Opens your phone's SMS app to the dispatch line, pre-filled with the ticket body.`;
+    });
+
+    async function submitTicket() {
+      const subject  = document.getElementById('ticketSubject').value.trim();
+      const body     = document.getElementById('ticketBody').value.trim();
+      const priority = document.getElementById('ticketPriority').value;
+      const channel  = document.getElementById('ticketChannel').value;
+      if (!subject || !body) { toast('Please fill in both fields.', 'warn'); return; }
+
+      const actor    = (typeof pmAuth !== 'undefined' && pmAuth.user()?.name) || 'Admin';
+      const ticket = {
+        id:       'tk-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6),
+        subject, body, priority, channel,
+        createdAt: Date.now(),
+        createdBy: actor,
+        status:   'open',
+        receipt:  null,
+      };
+
+      // Step 1: persist locally so the ticket survives the page navigation
+      // even if the channel handoff fails partway.
+      const list = loadTickets();
+      list.unshift(ticket);
+      saveTickets(list);
+
+      // Step 2: dispatch via the chosen channel. pmComms handles the deep
+      // link / fetch and returns a receipt string we store on the ticket.
+      // For non-platform channels we use the dispatch contact from shared.js.
+      const dispatch = (typeof PM_DISPATCH_CONTACT !== 'undefined') ? PM_DISPATCH_CONTACT : null;
+      const composedBody = `[Ticket · ${priority.toUpperCase()}] ${subject}\n\n${body}\n\n— ${actor}`;
+      let res = { ok: true, receipt: 'queued in-platform' };
+      if (channel !== 'platform' && dispatch) {
+        const to = (channel === 'email')
+          ? dispatch.email
+          : (channel === 'whatsapp' ? (dispatch.whatsapp || dispatch.phone) : dispatch.phone);
+        res = await pmComms.send({
+          channel,
+          to,
+          subject: `[Paint Masters Support] ${subject}`,
+          body: composedBody,
+          threadKey: 'support:' + ticket.id,
+        });
+      } else {
+        // Platform: best-effort POST to the future tickets endpoint.
+        try {
+          await fetch('/api/support/tickets', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (pmAuth.token() || '') },
+            body: JSON.stringify({ subject, body, priority })
+          }).catch(() => {});
+        } catch (e) { /* offline */ }
+      }
+
+      // Step 3: mark the ticket with the dispatch result + emit activity so
+      // the bell + feed update immediately in this and other admin tabs.
+      const updated = loadTickets();
+      const row = updated.find(t => t.id === ticket.id);
+      if (row) {
+        row.status  = res.ok ? 'sent' : 'failed';
+        row.receipt = res.receipt || (res.ok ? 'sent' : (res.error || 'failed'));
+        saveTickets(updated);
+      }
+      if (typeof pmActivity !== 'undefined') {
+        const sevMap = { low: 'info', normal: 'info', high: 'warn', urgent: 'error' };
+        pmActivity.emit({
+          kind: 'message',
+          severity: sevMap[priority] || 'info',
+          title: `Support ticket · ${priority.toUpperCase()} · ${subject}`,
+          sub: body.slice(0, 140) + (body.length > 140 ? '…' : ''),
+          source: { role: 'admin', name: actor }
+        });
+      }
+
+      // Step 4: reset the form + render.
+      document.getElementById('ticketSubject').value = '';
+      document.getElementById('ticketBody').value = '';
+      toast(res.ok ? `Ticket sent (${ticket.channel}).` : `Ticket saved locally — ${res.error || 'channel failed'}.`);
+      renderTickets();
+    }
+
+    function renderTickets() {
+      const host = document.getElementById('ticketsList'); if (!host) return;
+      const list = loadTickets();
+      if (!list.length) {
+        host.innerHTML = `<div class="small" style="padding:14px 0;color:var(--ink-500);">No tickets yet. The first one you submit shows up here.</div>`;
+        return;
+      }
+      const channelLabel = { platform:'💬 In-platform', email:'✉️ Email', whatsapp:'🟢 WhatsApp', sms:'📱 SMS' };
+      const sevColor = { low:'var(--ink-500)', normal:'var(--ink-700)', high:'var(--orange)', urgent:'var(--red)' };
+      host.innerHTML = list.slice(0, 20).map(t => {
+        const when = new Date(t.createdAt).toLocaleString('en-GB', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' });
+        const stClass = t.status === 'sent' ? 'st-done' : (t.status === 'failed' ? 'st-warn' : 'st-qa');
+        return `
+          <div style="display:grid;grid-template-columns:1fr auto;gap:8px;padding:10px 0;border-bottom:1px solid var(--ink-100);">
+            <div>
+              <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+                <strong style="color:var(--navy-900);font-size:0.92rem;">${escTk(t.subject)}</strong>
+                <span class="small" style="color:${sevColor[t.priority] || 'var(--ink-500)'};font-weight:600;text-transform:uppercase;letter-spacing:0.06em;font-size:0.7rem;">${escTk(t.priority)}</span>
+              </div>
+              <div class="small" style="color:var(--ink-500);margin-top:2px;">${when} · ${channelLabel[t.channel] || t.channel}${t.receipt ? ' · ' + escTk(t.receipt) : ''}</div>
+            </div>
+            <div style="display:flex;gap:6px;align-items:center;">
+              <span class="st ${stClass}" style="text-transform:capitalize;">${escTk(t.status)}</span>
+              ${t.status === 'open' || t.status === 'failed'
+                ? `<button class="btn btn-outline" style="padding:4px 10px;font-size:0.72rem;" onclick="resendTicket('${t.id}')">↻ Re-send</button>`
+                : `<button class="btn btn-outline" style="padding:4px 10px;font-size:0.72rem;" onclick="closeTicket('${t.id}')">✓ Mark resolved</button>`}
+            </div>
+          </div>`;
+      }).join('');
+    }
+    function closeTicket(id) {
+      const list = loadTickets();
+      const t = list.find(x => x.id === id); if (!t) return;
+      t.status = 'resolved';
+      saveTickets(list);
+      renderTickets();
+      toast('Ticket marked resolved.');
+    }
+    async function resendTicket(id) {
+      const list = loadTickets();
+      const t = list.find(x => x.id === id); if (!t) return;
+      // Re-fire the same channel the ticket was originally created on.
+      document.getElementById('ticketSubject').value = t.subject;
+      document.getElementById('ticketBody').value    = t.body;
+      document.getElementById('ticketPriority').value = t.priority;
+      document.getElementById('ticketChannel').value  = t.channel;
+      toast('Loaded into composer — review then click "Send to support".');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+    function escTk(s) {
+      return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+    document.getElementById('clearTickets').addEventListener('click', () => {
+      if (!confirm('Clear all your tickets from this device? This is local-only — sent emails / SMS are unaffected.')) return;
+      saveTickets([]);
+      renderTickets();
+    });
+
+    // First paint.
+    renderTickets();
+  </script>
+</body>
+</html>

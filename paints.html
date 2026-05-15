@@ -1,0 +1,339 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" type="image/png" href="assets/img/favicon.png" />
+  <title>Browse paints — Paint Masters</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/styles.css" />
+  <style>
+    .browse-hero {
+      background:
+        radial-gradient(900px 400px at 90% 0%, rgba(245,184,0,0.18), transparent 60%),
+        linear-gradient(180deg, #F7FAFD, #FFFFFF);
+      padding: 56px 24px 28px;
+    }
+    .filter-bar {
+      display: flex; flex-wrap: wrap; gap: 10px;
+      padding: 18px 0; max-width: var(--container);
+      margin: 0 auto; padding-left: 24px; padding-right: 24px;
+    }
+    .filter-pill {
+      border: 1.5px solid var(--ink-300); background: #fff;
+      padding: 8px 16px; border-radius: 999px;
+      font-size: 0.88rem; font-weight: 600; color: var(--ink-700);
+      cursor: pointer; transition: all 0.15s;
+    }
+    .filter-pill:hover { border-color: var(--navy-700); color: var(--navy-900); }
+    .filter-pill.active { background: var(--navy-900); border-color: var(--navy-900); color: #fff; }
+    .filter-pill .count { opacity: 0.7; margin-left: 4px; font-weight: 500; }
+
+    .paint-grid {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px;
+      max-width: var(--container); margin: 0 auto; padding: 0 24px 60px;
+    }
+    @media (max-width: 1000px) { .paint-grid { grid-template-columns: repeat(3, 1fr); } }
+    @media (max-width: 760px)  { .paint-grid { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 480px)  { .paint-grid { grid-template-columns: 1fr; } }
+
+    .paint-card {
+      background: #fff; border: 1px solid var(--ink-100);
+      border-radius: 14px; overflow: hidden;
+      display: flex; flex-direction: column;
+      transition: transform 0.08s, box-shadow 0.18s, border-color 0.15s;
+    }
+    .paint-card:hover {
+      transform: translateY(-2px); box-shadow: var(--shadow);
+      border-color: var(--ink-300);
+    }
+    .paint-card.hidden { display: none; }
+    .paint-swatch { height: 96px; border-bottom: 1px solid var(--ink-100); position: relative; }
+    .paint-swatch::after {
+      content: ""; position: absolute; inset: auto 0 0 0; height: 4px;
+      background: linear-gradient(90deg, transparent, rgba(0,0,0,0.10));
+    }
+    .paint-body { padding: 14px 16px; display: flex; flex-direction: column; flex: 1; }
+    .paint-meta { display: flex; gap: 8px; align-items: center; font-size: 0.74rem; margin-bottom: 8px; flex-wrap: wrap; }
+    .paint-brand {
+      background: var(--navy-900); color: #fff;
+      padding: 3px 8px; border-radius: 999px;
+      font-weight: 700; letter-spacing: 0.04em;
+      text-transform: uppercase; font-size: 0.68rem;
+    }
+    .paint-finish { color: var(--ink-500); font-size: 0.74rem; }
+    .paint-card strong {
+      display: block; font-family: var(--font-display); font-weight: 700;
+      color: var(--navy-900); font-size: 1.02rem; line-height: 1.25;
+    }
+    .paint-card p { margin: 6px 0 0; font-size: 0.84rem; color: var(--ink-700); flex: 1; }
+    .paint-foot {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--ink-100);
+    }
+    .paint-size { font-size: 0.78rem; color: var(--ink-500); }
+    .paint-cta {
+      font-size: 0.85rem; font-weight: 700;
+      color: var(--navy-900); text-decoration: none;
+    }
+    .paint-cta:hover { color: var(--gold-500); }
+
+    .empty-result {
+      max-width: var(--container); margin: 0 auto; padding: 40px 24px;
+      text-align: center; color: var(--ink-500);
+      display: none;
+    }
+    .empty-result.show { display: block; }
+
+    /* ---- Volume preview calculator ---- */
+    .pvc-wrap {
+      max-width: var(--container); margin: 0 auto 28px;
+      padding: 0 24px;
+    }
+    .pvc-card {
+      background:
+        radial-gradient(700px 280px at 88% -10%, rgba(140,205,86,0.18), transparent 60%),
+        linear-gradient(180deg, #ffffff, #f6faf2);
+      border: 1px solid var(--ink-100); border-radius: var(--radius-lg);
+      box-shadow: var(--shadow);
+      padding: 26px 28px;
+      display: grid; grid-template-columns: 1.05fr 1fr; gap: 28px; align-items: center;
+    }
+    @media (max-width: 880px) { .pvc-card { grid-template-columns: 1fr; } }
+
+    .pvc-head { margin-bottom: 14px; }
+    .pvc-head .eyebrow {
+      display:inline-block; background:#5a8a2e; color:#fff; padding:3px 10px;
+      font-size:0.66rem; font-weight:800; letter-spacing:0.14em; text-transform:uppercase;
+      border-radius:999px; margin-bottom: 10px;
+    }
+    .pvc-head h2 { margin: 0 0 8px; font-size: 1.5rem; line-height: 1.15; color: var(--navy-900); }
+    .pvc-head p  { margin: 0; color: var(--ink-700); font-size: 0.95rem; line-height: 1.55; }
+
+    .pvc-form {
+      display: grid; gap: 12px;
+    }
+    .pvc-form label { display:block; font-size:0.78rem; font-weight:700; color:var(--ink-700); margin-bottom:4px; }
+    .pvc-form .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    @media (max-width: 480px) { .pvc-form .row { grid-template-columns: 1fr; } }
+    .pvc-form .select, .pvc-form .input { width: 100%; }
+
+    .pvc-result {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+      margin-top: 10px; padding: 12px 14px;
+      background: var(--navy-900); color: #fff; border-radius: var(--radius);
+    }
+    .pvc-result .stat strong { display: block; font-size: 1.25rem; line-height: 1.1; }
+    .pvc-result .stat span   { font-size: 0.7rem; color: rgba(255,255,255,0.7); text-transform: uppercase; letter-spacing: 0.06em; }
+    .pvc-result.err { background: #f6e7e6; color: var(--navy-900); }
+    .pvc-result.err .stat span { color: var(--ink-500); }
+
+    .pvc-cta-row { display:flex; gap:10px; flex-wrap:wrap; margin-top: 14px; }
+  </style>
+</head>
+<body>
+  <div id="pm-nav"></div>
+
+  <section class="browse-hero">
+    <div class="container">
+      <span class="eyebrow">Browse paints</span>
+      <h1 class="mt-16">Pick a paint by brand and finish.</h1>
+      <p style="max-width:680px;">Every Paint Masters job uses these. Browse by partner brand or surface type, then pull your favourite straight into a quote.</p>
+    </div>
+  </section>
+
+  <!-- Volume preview calculator — stateless, no DB writes. Uses
+       /api/paint-volume/preview when backend is reachable, or computes
+       locally with the seeded coverage rates as a fallback. Final CTA links
+       into quote.html with product + area pre-filled. -->
+  <section class="pvc-wrap" aria-labelledby="pvcHeading">
+    <div class="pvc-card">
+      <div class="pvc-head">
+        <span class="eyebrow">Quick estimate</span>
+        <h2 id="pvcHeading">How much paint will you actually need?</h2>
+        <p>Pick a paint product, enter your wall area in square metres, and we'll tell you how many litres and buckets it takes. Material cost only — labour and platform fees are added inside the real quote.</p>
+        <div class="pvc-cta-row">
+          <a class="btn btn-primary" id="pvcQuoteCta" href="quote.html">Start a real quote with this →</a>
+          <a class="btn btn-ghost" href="brand.html?brand=caparol">See Caparol products</a>
+        </div>
+      </div>
+
+      <form class="pvc-form" onsubmit="return false;">
+        <div>
+          <label for="pvcProduct">Paint product</label>
+          <select class="select" id="pvcProduct"></select>
+        </div>
+        <div class="row">
+          <div>
+            <label for="pvcArea">Area (m²)</label>
+            <input class="input" type="number" id="pvcArea" min="5" step="0.1" value="60" />
+          </div>
+          <div>
+            <label for="pvcCoats">Coats</label>
+            <input class="input" type="number" id="pvcCoats" min="1" max="5" step="1" value="2" />
+          </div>
+        </div>
+        <div class="pvc-result" id="pvcResult">
+          <div class="stat"><strong id="pvcLitres">— L</strong><span>Litres needed</span></div>
+          <div class="stat"><strong id="pvcBuckets">—</strong><span>Buckets</span></div>
+          <div class="stat"><strong id="pvcCost">—</strong><span>Material cost</span></div>
+        </div>
+      </form>
+    </div>
+  </section>
+
+  <div class="filter-bar" id="filterBar"></div>
+  <div class="filter-bar" id="surfaceBar" style="padding-top: 0; padding-bottom: 24px;"></div>
+
+  <div class="paint-grid" id="paintGrid"></div>
+
+  <div class="empty-result" id="emptyResult">
+    <strong style="display:block;color:var(--navy-900);font-size:1.1rem;margin-bottom:6px;">No paints match.</strong>
+    <p>Try a different brand or surface filter.</p>
+  </div>
+
+  <div id="pm-footer"></div>
+
+  <script src="assets/shared.js"></script>
+  <script src="assets/paint-catalog.js"></script>
+  <script>
+    pmMountLayout('paints');
+
+    // Build filter pill rows from the catalog.
+    const brands   = ['All', ...new Set(PM_PAINTS.map(p => p.brand))];
+    const surfaces = ['All', ...new Set(PM_PAINTS.map(p => p.surface))];
+
+    const state = { brand: 'All', surface: 'All' };
+
+    function renderFilters() {
+      const brandHost = document.getElementById('filterBar');
+      brandHost.innerHTML = '<span class="small" style="align-self:center;color:var(--ink-500);margin-right:4px;">Brand:</span>'
+        + brands.map(b => {
+            const count = b === 'All' ? PM_PAINTS.length : PM_PAINTS.filter(p => p.brand === b).length;
+            return `<button class="filter-pill ${state.brand === b ? 'active' : ''}" data-brand="${b}">${b} <span class="count">${count}</span></button>`;
+          }).join('');
+
+      const surfaceHost = document.getElementById('surfaceBar');
+      surfaceHost.innerHTML = '<span class="small" style="align-self:center;color:var(--ink-500);margin-right:4px;">Surface:</span>'
+        + surfaces.map(s => {
+            const count = s === 'All' ? PM_PAINTS.length : PM_PAINTS.filter(p => p.surface === s).length;
+            return `<button class="filter-pill ${state.surface === s ? 'active' : ''}" data-surface="${s}">${s} <span class="count">${count}</span></button>`;
+          }).join('');
+
+      brandHost.querySelectorAll('[data-brand]').forEach(b => b.addEventListener('click', () => {
+        state.brand = b.dataset.brand; renderFilters(); applyFilters();
+      }));
+      surfaceHost.querySelectorAll('[data-surface]').forEach(s => s.addEventListener('click', () => {
+        state.surface = s.dataset.surface; renderFilters(); applyFilters();
+      }));
+    }
+
+    function applyFilters() {
+      const cards = document.querySelectorAll('#paintGrid .paint-card');
+      let visible = 0;
+      cards.forEach(c => {
+        const okBrand   = state.brand   === 'All' || c.dataset.brand   === state.brand;
+        const okSurface = state.surface === 'All' || c.dataset.surface === state.surface;
+        const show = okBrand && okSurface;
+        c.classList.toggle('hidden', !show);
+        if (show) visible++;
+      });
+      document.getElementById('emptyResult').classList.toggle('show', visible === 0);
+    }
+
+    document.getElementById('paintGrid').innerHTML = PM_PAINTS.map(pmRenderPaintCard).join('');
+    renderFilters();
+    applyFilters();
+
+    // =================================================================
+    // Volume preview calculator. Stateless — no DB writes from here.
+    // Mirrors the math in backend services/paintVolume.js so the live
+    // number on this page is the same number a dispatcher will see if
+    // the customer carries this product+area into a real quote.
+    // =================================================================
+    const PVC_FALLBACK_PRODUCTS = [
+      { id: 1, name: 'Interior Emulsion (standard)',  type: 'interior',       coverage_m2_per_litre: 11, coats_recommended: 2, price_per_litre: 55,  bucket_size_litres: 20 },
+      { id: 2, name: 'Wall & Ceiling Emulsion',       type: 'wall_ceiling',   coverage_m2_per_litre: 11, coats_recommended: 2, price_per_litre: 50,  bucket_size_litres: 20 },
+      { id: 3, name: 'Furniture & Trim Enamel',       type: 'furniture_trim', coverage_m2_per_litre: 13, coats_recommended: 2, price_per_litre: 95,  bucket_size_litres: 4  },
+      { id: 4, name: 'Floor-based Epoxy',             type: 'floor',          coverage_m2_per_litre:  9, coats_recommended: 2, price_per_litre: 140, bucket_size_litres: 4  },
+      { id: 5, name: 'Exterior Masonry',              type: 'exterior',       coverage_m2_per_litre:  7, coats_recommended: 2, price_per_litre: 75,  bucket_size_litres: 20 },
+      { id: 6, name: 'Air-Purifying Interior',        type: 'air_purifying',  coverage_m2_per_litre: 10, coats_recommended: 2, price_per_litre: 120, bucket_size_litres: 4  },
+      { id: 7, name: 'Pet-Dwelling Washable',         type: 'pet_dwelling',   coverage_m2_per_litre: 10, coats_recommended: 2, price_per_litre: 110, bucket_size_litres: 4  },
+      { id: 8, name: 'Chalkboard Finish',             type: 'chalkboard',     coverage_m2_per_litre:  9, coats_recommended: 2, price_per_litre: 130, bucket_size_litres: 4  },
+      { id: 9, name: 'EMR Shielding',                 type: 'emr_shielding',  coverage_m2_per_litre:  5, coats_recommended: 2, price_per_litre: 350, bucket_size_litres: 4  },
+    ];
+    let pvcProducts = PVC_FALLBACK_PRODUCTS;
+
+    const pvcSel    = document.getElementById('pvcProduct');
+    const pvcArea   = document.getElementById('pvcArea');
+    const pvcCoats  = document.getElementById('pvcCoats');
+    const pvcResult = document.getElementById('pvcResult');
+    const pvcCTA    = document.getElementById('pvcQuoteCta');
+
+    function pvcRenderOptions() {
+      pvcSel.innerHTML = pvcProducts
+        .map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+    }
+
+    function pvcCompute() {
+      const product = pvcProducts.find(p => p.id === Number(pvcSel.value));
+      const area    = Number(pvcArea.value);
+      const coats   = Number(pvcCoats.value);
+      if (!product || !(area >= 5) || !(coats >= 1)) {
+        pvcResult.classList.add('err');
+        document.getElementById('pvcLitres').textContent  = '—';
+        document.getElementById('pvcBuckets').textContent = '—';
+        document.getElementById('pvcCost').textContent    = 'Enter an area of 5 m² or more';
+        return;
+      }
+      const raw     = (area * coats) / product.coverage_m2_per_litre;
+      const litres  = Math.round(raw * 1.10 * 100) / 100;             // +10% waste
+      const buckets = Math.ceil(litres / product.bucket_size_litres);
+      const cost    = Math.round(buckets * product.bucket_size_litres * product.price_per_litre * 100) / 100;
+      pvcResult.classList.remove('err');
+      document.getElementById('pvcLitres').textContent  = `${litres} L`;
+      document.getElementById('pvcBuckets').textContent = `${buckets} × ${product.bucket_size_litres} L`;
+      document.getElementById('pvcCost').textContent    = pmFormatGHS(cost);
+
+      // Keep the "Start a real quote" CTA pre-filled with the live selection.
+      const params = new URLSearchParams({
+        product: String(product.id),
+        product_name: product.name,
+        area: String(area),
+        coats: String(coats),
+      });
+      pvcCTA.href = `quote.html?${params.toString()}`;
+    }
+
+    pvcSel.addEventListener('change', () => {
+      const product = pvcProducts.find(p => p.id === Number(pvcSel.value));
+      if (product && product.coats_recommended) pvcCoats.value = product.coats_recommended;
+      pvcCompute();
+    });
+    pvcArea.addEventListener('input', pvcCompute);
+    pvcCoats.addEventListener('input', pvcCompute);
+
+    pvcRenderOptions();
+    pvcCompute();
+
+    // Try to upgrade to the live catalog. Silent on failure.
+    (async function pvcLoadProducts() {
+      try {
+        const res = await fetch('/api/paint-volume/products');
+        if (!res.ok) return;
+        const j = await res.json();
+        if (j && Array.isArray(j.products) && j.products.length) {
+          pvcProducts = j.products;
+          const prev = pvcSel.value;
+          pvcRenderOptions();
+          // Keep their selection if it's still present in the new list.
+          if (pvcProducts.find(p => String(p.id) === prev)) pvcSel.value = prev;
+          pvcCompute();
+        }
+      } catch (_) { /* offline / file:// — keep fallback */ }
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,352 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" type="image/png" href="../assets/img/favicon.png" />
+  <title>Brand Partners — Paint Masters Admin</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/admin.css" />
+  <style>
+    /* Mirrors the slide editor pattern in admin/settings.html for visual
+       consistency — a vertical list of editable rows. Each row carries its
+       own logo upload, its own text inputs, and a remove button. Drag with
+       the grip handle to re-order. */
+    .bp-list { display: flex; flex-direction: column; gap: 12px; margin-top: 18px; }
+    .bp-row {
+      background: #fff; border: 1px solid var(--ink-100); border-radius: var(--radius-lg);
+      padding: 14px 16px; display: grid;
+      grid-template-columns: 32px 92px 1fr 1fr 1fr 80px;
+      gap: 12px; align-items: center;
+    }
+    @media (max-width: 1000px) {
+      .bp-row { grid-template-columns: 32px 92px 1fr 80px; }
+      .bp-row .bp-blurb, .bp-row .bp-surfaces { grid-column: 1 / -1; }
+    }
+    .bp-grip { cursor: grab; color: var(--ink-500); font-size: 1.1rem; text-align:center; user-select: none; }
+    .bp-grip:active { cursor: grabbing; }
+    .bp-row.dragging { opacity: 0.45; }
+
+    .bp-logo {
+      width: 92px; height: 92px; background: #f4f6f8;
+      border: 1px dashed var(--ink-300); border-radius: var(--radius);
+      display: grid; place-items: center;
+      overflow: hidden; position: relative; cursor: pointer;
+    }
+    .bp-logo img { width: 100%; height: 100%; object-fit: contain; padding: 6px; }
+    .bp-logo .placeholder { font-size: 0.7rem; color: var(--ink-500); text-align: center; padding: 4px; }
+    .bp-logo input[type=file] { display: none; }
+    .bp-logo:hover { border-color: var(--navy-700); }
+    .bp-logo:hover::after {
+      content: 'Click to upload'; position: absolute; inset: 0;
+      background: rgba(11,31,58,0.78); color: #fff; font-size: 0.7rem; font-weight: 700;
+      display: grid; place-items: center; text-transform: uppercase; letter-spacing: 0.06em;
+    }
+
+    .bp-row input[type=text] {
+      width: 100%; padding: 8px 10px; border: 1px solid var(--ink-300); border-radius: var(--radius);
+      font: inherit; font-size: 0.9rem; background: #fff;
+    }
+    .bp-row label {
+      display: block; font-size: 0.68rem; font-weight: 700; color: var(--ink-500);
+      letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 4px;
+    }
+    .bp-actions { display: flex; flex-direction: column; gap: 4px; align-items: stretch; }
+    .bp-actions button {
+      padding: 6px 10px; font-size: 0.78rem; border-radius: 6px;
+      border: 1px solid var(--ink-100); background: #fff; cursor: pointer;
+    }
+    .bp-actions .featured.on { background: var(--gold-500); color: var(--navy-900); border-color: var(--gold-500); font-weight: 700; }
+    .bp-actions .remove { color: #8a1414; }
+    .bp-actions .remove:hover { background: #fbdada; border-color: #fbdada; }
+
+    .bp-preview {
+      margin-top: 28px; padding: 20px; background: #f7faff;
+      border: 1px solid var(--ink-100); border-radius: var(--radius-lg);
+    }
+    .bp-preview h3 { margin: 0 0 12px; }
+    .bp-preview .grid {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px;
+    }
+    @media (max-width: 1000px) { .bp-preview .grid { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 540px)  { .bp-preview .grid { grid-template-columns: 1fr; } }
+    .bp-preview-card {
+      background: #fff; border: 1px solid var(--ink-100); border-radius: var(--radius);
+      padding: 14px; text-align: center; font-size: 0.86rem;
+      position: relative;
+    }
+    .bp-preview-card .logo { height: 64px; display: grid; place-items: center; margin-bottom: 8px; }
+    .bp-preview-card .logo img { max-height: 100%; max-width: 100%; }
+    .bp-preview-card strong { display: block; color: var(--navy-900); font-size: 0.95rem; }
+    .bp-preview-card .sub { color: var(--ink-500); font-size: 0.78rem; margin-top: 2px; }
+    .bp-preview-card .feat-pill {
+      position:absolute; top:8px; right:8px; background: var(--gold-500); color: var(--navy-900);
+      font-size: 0.6rem; font-weight: 800; letter-spacing: 0.08em;
+      text-transform: uppercase; padding: 2px 8px; border-radius: 999px;
+    }
+  </style>
+</head>
+<body>
+  <div class="admin-shell">
+    <div id="admin-sidebar"></div>
+    <div class="admin-main">
+      <div id="admin-topbar"></div>
+      <div class="main">
+
+        <div class="page-head">
+          <div>
+            <h1>Trusted Paint Partners</h1>
+            <div class="sub" style="color:var(--ink-500);">Edit the brand grid that appears on the customer homepage. Changes save to localStorage and apply on the next page load.</div>
+          </div>
+          <div class="page-actions">
+            <button class="btn btn-outline" onclick="bpResetDefaults()">↺ Reset to defaults</button>
+            <button class="btn btn-primary" onclick="bpAdd()">＋ Add partner</button>
+          </div>
+        </div>
+
+        <div id="bpList" class="bp-list"></div>
+
+        <div class="bp-preview">
+          <h3>Preview</h3>
+          <p class="sub" style="color:var(--ink-500);margin-top:-6px;">Live preview of how the line-up renders on the homepage brand grid.</p>
+          <div class="grid" id="bpPreview"></div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <script src="../assets/shared.js"></script>
+  <script src="assets/admin-shared.js"></script>
+  <script>
+    adminMount('brand-partners');
+
+    const STORE_KEY = 'pm_brand_partners_v1';
+
+    // Same default seed as the homepage hardcoded fallback in paint-catalog.js
+    // — kept in sync so "reset to defaults" lands customers back where they
+    // started before any admin edits.
+    const DEFAULT_PARTNERS = [
+      { slug:'dulux',   name:'Dulux',   logoSrc:'assets/img/brands/dulux.png',   blurb:'Exterior weatherproof finishes. The Accra façade standard.',  surfaces:'Exterior · Walls' },
+      { slug:'caparol', name:'Caparol', logoSrc:'assets/img/brands/caparol.png', blurb:'European-grade durability we trust on premium interiors.',     surfaces:'Premium interior emulsion', featured: true },
+      { slug:'leyland', name:'Leyland', logoSrc:'assets/img/brands/leyland.png', blurb:'Soft matte interiors that resist yellowing in tropical heat.', surfaces:'Interior matte' },
+      { slug:'azar',    name:'Azar',    logoSrc:'assets/img/brands/azar.png',    blurb:'A local champion — fully tested in our QA program.',           surfaces:'Emulsion · Accent' },
+      { slug:'coral',   name:'Coral',   logoSrc:'assets/img/brands/coral.png',   blurb:'High-sheen gloss for trim, doors, and metal frames.',          surfaces:'Gloss · Trim' },
+      { slug:'shield',  name:'Shield',  logoSrc:'assets/img/brands/shield.png',  blurb:'Premium long-life coatings for façades and roofs.',           surfaces:'Specialty · Roof & Façade' },
+    ];
+
+    let partners = loadPartners();
+
+    function loadPartners() {
+      try {
+        const raw = JSON.parse(localStorage.getItem(STORE_KEY) || 'null');
+        if (Array.isArray(raw) && raw.length) return raw;
+      } catch (_) {}
+      return DEFAULT_PARTNERS.map(p => ({ ...p }));
+    }
+
+    function savePartners() {
+      try {
+        localStorage.setItem(STORE_KEY, JSON.stringify(partners));
+        if (typeof pmToast === 'function') pmToast('Brand partners saved.', 'success');
+      } catch (e) {
+        alert('Could not save — localStorage may be full. Try removing some uploaded logos.');
+      }
+      renderPreview();
+    }
+
+    function bpResetDefaults() {
+      if (!confirm('Reset the partner line-up to the default brands? Your custom edits will be lost.')) return;
+      localStorage.removeItem(STORE_KEY);
+      partners = loadPartners();
+      render();
+      if (typeof pmToast === 'function') pmToast('Reset to defaults.', 'success');
+    }
+
+    function bpAdd() {
+      partners.push({
+        slug:     'new-partner-' + (partners.length + 1),
+        name:     'New Partner',
+        logoSrc:  '',
+        blurb:    'Short one-line description of what they\'re known for.',
+        surfaces: 'Surface category',
+        featured: false,
+      });
+      render();
+      savePartners();
+      // Scroll to the new row so the user can start typing.
+      setTimeout(() => {
+        const rows = document.querySelectorAll('.bp-row');
+        if (rows.length) rows[rows.length - 1].scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 50);
+    }
+
+    function bpRemove(idx) {
+      const p = partners[idx]; if (!p) return;
+      if (!confirm(`Remove "${p.name}" from the partner grid? They'll be gone from the homepage on next reload.`)) return;
+      partners.splice(idx, 1);
+      render();
+      savePartners();
+    }
+
+    function bpToggleFeatured(idx) {
+      partners[idx].featured = !partners[idx].featured;
+      render();
+      savePartners();
+    }
+
+    function bpMove(idx, delta) {
+      const j = idx + delta;
+      if (j < 0 || j >= partners.length) return;
+      const [p] = partners.splice(idx, 1);
+      partners.splice(j, 0, p);
+      render();
+      savePartners();
+    }
+
+    function bpFieldChange(idx, field, value) {
+      partners[idx][field] = value;
+      // Slug normalisation — strip to lowercase + hyphens. Done on blur so
+      // the user can type spaces while editing without the field jumping.
+      if (field === 'slug') {
+        partners[idx][field] = value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+      }
+    }
+
+    // Resize and base64 a chosen file. Mirrors the helper used by the hero
+    // slider editor in settings.html so storage usage stays bounded.
+    function shrinkImage(file, maxEdge = 480, quality = 0.86) {
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        const reader = new FileReader();
+        reader.onload  = () => { img.src = reader.result; };
+        reader.onerror = () => reject(new Error('Could not read file.'));
+        img.onload  = () => {
+          let { width: w, height: h } = img;
+          const scale = Math.min(1, maxEdge / Math.max(w, h));
+          w = Math.round(w * scale); h = Math.round(h * scale);
+          const c = document.createElement('canvas');
+          c.width = w; c.height = h;
+          c.getContext('2d').drawImage(img, 0, 0, w, h);
+          // PNG keeps transparency for logos; JPEG is lighter. Use the original
+          // mime if it's PNG/WebP, otherwise force JPEG.
+          const useTransparent = /image\/(png|webp)/.test(file.type);
+          resolve(c.toDataURL(useTransparent ? 'image/png' : 'image/jpeg', quality));
+        };
+        img.onerror = () => reject(new Error('Could not decode image.'));
+        reader.readAsDataURL(file);
+      });
+    }
+
+    async function bpUpload(idx, fileInput) {
+      const file = fileInput.files && fileInput.files[0];
+      if (!file) return;
+      try {
+        partners[idx].logoSrc = await shrinkImage(file);
+        render();
+        savePartners();
+      } catch (e) {
+        alert('Image upload failed: ' + e.message);
+      }
+    }
+
+    // --- render ---
+    function esc(s) {
+      return String(s == null ? '' : s)
+        .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+        .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+    }
+
+    function toAdminPreview(src) {
+      if (!src) return '';
+      if (src.startsWith('data:') || /^https?:\/\//.test(src)) return src;
+      return src.startsWith('../') ? src : '../' + src;
+    }
+
+    function render() {
+      const host = document.getElementById('bpList');
+      host.innerHTML = partners.map((p, i) => `
+        <div class="bp-row" draggable="true" data-idx="${i}">
+          <div class="bp-grip" title="Drag to reorder">⋮⋮</div>
+
+          <label class="bp-logo" for="bp-logo-${i}">
+            ${p.logoSrc
+              ? `<img src="${esc(toAdminPreview(p.logoSrc))}" alt="${esc(p.name)}" />`
+              : `<span class="placeholder">No logo<br/>click to upload</span>`}
+            <input type="file" id="bp-logo-${i}" accept="image/*" onchange="bpUpload(${i}, this)" />
+          </label>
+
+          <div>
+            <label>Brand name</label>
+            <input type="text" value="${esc(p.name)}"     oninput="bpFieldChange(${i}, 'name',  this.value)" onblur="savePartners()" />
+            <label style="margin-top:8px;">Slug (URL)</label>
+            <input type="text" value="${esc(p.slug)}"     oninput="bpFieldChange(${i}, 'slug',  this.value)" onblur="bpFieldChange(${i}, 'slug', this.value); render(); savePartners();" />
+          </div>
+
+          <div class="bp-blurb">
+            <label>One-line blurb (homepage)</label>
+            <input type="text" value="${esc(p.blurb)}"    oninput="bpFieldChange(${i}, 'blurb', this.value)" onblur="savePartners()" />
+          </div>
+
+          <div class="bp-surfaces">
+            <label>Surfaces tag</label>
+            <input type="text" value="${esc(p.surfaces)}" oninput="bpFieldChange(${i}, 'surfaces', this.value)" onblur="savePartners()" />
+          </div>
+
+          <div class="bp-actions">
+            <button type="button" class="featured ${p.featured ? 'on' : ''}" onclick="bpToggleFeatured(${i})" title="${p.featured ? 'Unmark featured' : 'Mark featured'}">${p.featured ? '★ Featured' : '☆ Feature'}</button>
+            <button type="button" onclick="bpMove(${i},-1)" ${i === 0 ? 'disabled' : ''}>↑</button>
+            <button type="button" onclick="bpMove(${i}, 1)" ${i === partners.length - 1 ? 'disabled' : ''}>↓</button>
+            <button type="button" class="remove" onclick="bpRemove(${i})">Remove</button>
+          </div>
+        </div>
+      `).join('') || `<div class="empty-state" style="padding:40px;text-align:center;color:var(--ink-500);">
+        <strong style="color:var(--navy-900);display:block;">No partners yet.</strong>
+        <p>Click "Add partner" to start building the homepage line-up.</p>
+      </div>`;
+
+      // Drag-and-drop reorder. Simple HTML5 implementation — for production
+      // you'd reach for SortableJS, but this is fine for ~10 rows.
+      let dragSrc = null;
+      host.querySelectorAll('.bp-row').forEach(row => {
+        row.addEventListener('dragstart', e => {
+          dragSrc = Number(row.dataset.idx);
+          row.classList.add('dragging');
+          e.dataTransfer.effectAllowed = 'move';
+        });
+        row.addEventListener('dragend',   () => row.classList.remove('dragging'));
+        row.addEventListener('dragover',  e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; });
+        row.addEventListener('drop',      e => {
+          e.preventDefault();
+          const dst = Number(row.dataset.idx);
+          if (dragSrc == null || dragSrc === dst) return;
+          const [p] = partners.splice(dragSrc, 1);
+          partners.splice(dst, 0, p);
+          render();
+          savePartners();
+        });
+      });
+
+      renderPreview();
+    }
+
+    function renderPreview() {
+      const host = document.getElementById('bpPreview');
+      host.innerHTML = partners.map(p => `
+        <div class="bp-preview-card">
+          ${p.featured ? '<span class="feat-pill">★ Featured</span>' : ''}
+          <div class="logo">
+            ${p.logoSrc ? `<img src="${esc(toAdminPreview(p.logoSrc))}" alt="${esc(p.name)}" />` : `<span style="font-family:var(--font-display);color:var(--navy-900);">${esc(p.name)}</span>`}
+          </div>
+          <strong>${esc(p.name)}</strong>
+          <div class="sub">${esc(p.surfaces || '')}</div>
+        </div>
+      `).join('');
+    }
+
+    render();
+  </script>
+</body>
+</html>

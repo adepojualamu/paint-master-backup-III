@@ -1,0 +1,593 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" type="image/png" href="assets/img/favicon.png" />
+  <title>Book Your Project — Paint Masters</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/styles.css" />
+</head>
+<body>
+  <div id="pm-nav"></div>
+
+  <section class="section-sm" style="background:linear-gradient(180deg,#F7FAFD,#FFFFFF);">
+    <div class="container" style="padding:40px 24px 16px;">
+      <span class="eyebrow">Booking</span>
+      <h1 class="mt-16" style="margin-bottom:6px;">Four steps to schedule your Master</h1>
+      <p>All pricing locked from your quote. No surprises.</p>
+    </div>
+  </section>
+
+  <section class="section" style="padding-top:16px;">
+    <div class="container">
+      <div class="stepper" id="stepper">
+        <div class="s active" data-s="1">Schedule</div>
+        <div class="s" data-s="2">Your details</div>
+        <div class="s" data-s="3">Contract</div>
+        <div class="s" data-s="4">Payment</div>
+      </div>
+
+      <div class="quote-wrap">
+        <!-- Main booking area -->
+        <div class="quote-form">
+
+          <!-- STEP 1: Schedule -->
+          <div class="quote-panel active" data-panel="1">
+            <h3 class="mt-0">Pick a start date</h3>
+            <p>Available slots are shown in <strong style="color:var(--navy-900);">dark</strong>. Booked days are in red. Our Masters work Mon–Sat.</p>
+
+            <div class="calendar" id="cal"></div>
+
+            <div class="field mt-24">
+              <label>Preferred arrival window</label>
+              <div class="chip-group" id="windowGroup">
+                <button class="chip active" data-window="morning">Morning (7am – 11am)</button>
+                <button class="chip" data-window="midday">Midday (11am – 3pm)</button>
+                <button class="chip" data-window="afternoon">Afternoon (2pm – 6pm)</button>
+              </div>
+            </div>
+
+            <div class="flex-between mt-24">
+              <a href="quote.html" class="btn btn-ghost">← Adjust quote</a>
+              <button class="btn btn-primary" onclick="stepTo(2)" id="toStep2">Next: Your details →</button>
+            </div>
+          </div>
+
+          <!-- STEP 2: Details -->
+          <div class="quote-panel" data-panel="2">
+            <h3 class="mt-0">Your details</h3>
+            <p>So we can send confirmation, contract, and keep you posted on job day.</p>
+
+            <div class="row">
+              <div class="field">
+                <label>Full name *</label>
+                <input class="input" type="text" id="fName" placeholder="e.g. Nana Adwoa Mensah" />
+              </div>
+              <div class="field">
+                <label>Phone number *</label>
+                <input class="input" type="tel" id="fPhone" placeholder="+233 24 000 0000" />
+              </div>
+            </div>
+
+            <div class="field">
+              <label>Email *</label>
+              <input class="input" type="email" id="fEmail" placeholder="you@email.com" />
+            </div>
+
+            <div class="field">
+              <label>Job address *</label>
+              <input class="input" type="text" id="fAddress" placeholder="House/building number, street, area" />
+            </div>
+
+            <div class="row">
+              <div class="field">
+                <label>City *</label>
+                <select class="select" id="fCity"
+                        data-pm-regions='{"includeOther":true}'>
+                  <option>Accra</option>
+                </select>
+              </div>
+              <div class="field">
+                <label>Customer type</label>
+                <select class="select" id="fType">
+                  <option value="home">Homeowner</option>
+                  <option value="pm">Property Manager</option>
+                  <option value="smb">SMB / Business Owner</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="field">
+              <label>Anything the Master should know? (optional)</label>
+              <textarea class="textarea" id="fNotes" rows="3" placeholder="Gate code, pets, key contacts, accessibility notes..."></textarea>
+            </div>
+
+            <div class="flex-between mt-24">
+              <button class="btn btn-ghost" onclick="stepTo(1)">← Back</button>
+              <button class="btn btn-primary" onclick="validateStep2()">Next: Contract →</button>
+            </div>
+          </div>
+
+          <!-- STEP 3: Contract -->
+          <div class="quote-panel" data-panel="3">
+            <h3 class="mt-0">Digital service contract</h3>
+            <p>Standard Paint Masters terms. Review and sign to lock your quote.</p>
+
+            <div style="background:var(--ink-50);border:1px solid var(--ink-100);border-radius:12px;padding:20px;max-height:260px;overflow:auto;font-size:0.92rem;color:var(--ink-700);line-height:1.6;">
+              <p><strong>Paint Masters Service Agreement</strong></p>
+              <p>This agreement is between <span id="cName">[Customer]</span> (the "Customer") and <strong>Paint Masters Ghana Ltd.</strong> (the "Company") for the painting services quoted on this page.</p>
+              <p><strong>1. Scope of work.</strong> The Company will perform the services itemised in the quote dated <span id="cDate"></span>. Any change to scope requires written confirmation and may adjust the price.</p>
+              <p><strong>2. Payment.</strong> A 40% deposit is due at booking, held in escrow by the payment provider. The remaining 60% is released upon successful QA inspection.</p>
+              <p><strong>3. Warranty.</strong> The Company guarantees the finish against peeling, blistering, or chalking for <strong>12 months</strong> from completion. Warranty claims will be addressed within 14 business days.</p>
+              <p><strong>4. Access.</strong> The Customer agrees to grant the assigned Paint Master safe access to the property on the booked date and time window.</p>
+              <p><strong>5. Cancellation.</strong> Free cancellation up to 48 hours before the scheduled start. Cancellations inside 48 hours incur a 15% restocking fee.</p>
+              <p><strong>6. Liability.</strong> The Company carries third-party liability insurance up to GHS 500,000 per incident.</p>
+              <p><strong>7. Governing law.</strong> This agreement is governed by the laws of the Republic of Ghana.</p>
+            </div>
+
+            <div class="field mt-24">
+              <label>Sign with your full name</label>
+              <input class="input" type="text" id="fSign" placeholder="Type your full legal name to sign" />
+            </div>
+
+            <div class="field">
+              <label style="display:flex;gap:8px;align-items:center;font-weight:500;">
+                <input type="checkbox" id="fAgree" /> I have read and agree to the terms above.
+              </label>
+            </div>
+
+            <div class="flex-between mt-24">
+              <button class="btn btn-ghost" onclick="stepTo(2)">← Back</button>
+              <button class="btn btn-primary" onclick="validateStep3()">Next: Payment →</button>
+            </div>
+          </div>
+
+          <!-- STEP 4: Payment -->
+          <div class="quote-panel" data-panel="4">
+            <h3 class="mt-0">Payment</h3>
+            <p>Pay 40% now to lock your slot. The remainder is released after QA sign-off.</p>
+
+            <div class="chip-group" id="payGroup">
+              <button class="chip active" data-pay="momo">📱 Mobile Money</button>
+              <button class="chip" data-pay="card">💳 Card</button>
+              <button class="chip" data-pay="bank">🏦 Bank Transfer</button>
+            </div>
+
+            <!-- Cashless-platform notice — surfaced at the moment of payment
+                 so customers understand the policy before booking. -->
+            <div class="alert" style="background:rgba(245,184,0,0.10);border:1px solid rgba(245,184,0,0.4);
+                       color:#6B4F00;padding:12px 14px;border-radius:10px;margin-top:14px;
+                       display:flex;gap:10px;align-items:flex-start;font-size:0.88rem;line-height:1.5;">
+              <span aria-hidden="true" style="font-size:1.1rem;">🔒</span>
+              <span>
+                <strong>Cashless platform — no cash, anywhere.</strong>
+                Your deposit is held in escrow until QA passes. Please don't pay your Paint Master in cash at any point during the job —
+                if you're ever asked to, report it directly through your project tracker after booking. The Master will be removed from the roster.
+              </span>
+            </div>
+
+            <div data-pay-panel="momo" class="mt-24">
+              <div class="row">
+                <div class="field">
+                  <label>Network</label>
+                  <select class="select">
+                    <option>MTN MoMo</option>
+                    <option>Vodafone Cash</option>
+                    <option>AirtelTigo Money</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label>MoMo number</label>
+                  <input class="input" placeholder="+233 24 000 0000" />
+                </div>
+              </div>
+            </div>
+
+            <div data-pay-panel="card" class="mt-24 hidden">
+              <div class="field"><label>Card number</label><input class="input" placeholder="4242 4242 4242 4242" /></div>
+              <div class="row">
+                <div class="field"><label>Expiry</label><input class="input" placeholder="MM / YY" /></div>
+                <div class="field"><label>CVC</label><input class="input" placeholder="123" /></div>
+              </div>
+            </div>
+
+            <div data-pay-panel="bank" class="mt-24 hidden">
+              <div class="alert info">
+                Transfer your deposit to <strong>Paint Masters Ghana Ltd.</strong><br/>
+                GCB Bank · 1234 5678 9012 · Ref: <span id="bRef"></span>
+              </div>
+            </div>
+
+            <div class="alert ok mt-24">
+              🔒 Your deposit is held by our licensed escrow partner. It's only released to us after your QA inspection passes.
+            </div>
+
+            <div class="flex-between mt-24">
+              <button class="btn btn-ghost" onclick="stepTo(3)">← Back</button>
+              <button class="btn btn-gold btn-lg" onclick="confirmBooking()">Confirm & Pay Deposit →</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ORDER SUMMARY -->
+        <aside class="summary-card">
+          <h3>Booking summary</h3>
+          <div class="total" id="bTotal">GHS 0 <small>total</small></div>
+          <p class="small" style="color:rgba(255,255,255,0.7);">Deposit today: <strong id="bDeposit" style="color:var(--gold-500);">GHS 0</strong> (40%)</p>
+
+          <div class="surface-preview" id="bService">
+            <em>No quote found.</em>
+          </div>
+
+          <div style="margin-top:18px;">
+            <div class="summary-row"><span>Date</span><strong id="bDate">— select —</strong></div>
+            <div class="summary-row"><span>Window</span><strong id="bWindow">Morning</strong></div>
+            <div class="summary-row"><span>Area</span><strong id="bArea">—</strong></div>
+            <div class="summary-row"><span>Labour</span><strong id="bLabour">—</strong></div>
+            <div class="summary-row"><span>Materials</span><strong id="bMaterials">—</strong></div>
+            <div class="summary-row"><span>VAT (12.5%)</span><strong id="bVAT">—</strong></div>
+          </div>
+
+          <p class="small" style="margin-top:16px;color:rgba(255,255,255,0.6);">Quote valid 14 days from creation.</p>
+          <p><a href="quote.html" style="color:var(--gold-500);font-weight:600;">← Edit quote</a></p>
+        </aside>
+      </div>
+    </div>
+  </section>
+
+  <!-- SUCCESS MODAL -->
+  <div id="successModal" class="hidden" style="position:fixed;inset:0;background:rgba(11,31,58,0.75);z-index:1000;display:grid;place-items:center;padding:20px;">
+    <div style="background:#fff;border-radius:22px;max-width:560px;width:100%;padding:40px;text-align:center;">
+      <div style="width:80px;height:80px;border-radius:50%;background:var(--green);color:#fff;display:grid;place-items:center;margin:0 auto 16px;font-size:2.4rem;">✓</div>
+      <h2>Booking confirmed!</h2>
+      <p>We've sent confirmation, your digital contract, and warranty details to your email. A dispatcher will assign your Paint Master within 24 hours.</p>
+      <div id="bookingRef" class="alert info" style="margin:20px 0;"></div>
+
+      <!-- Paint volume review status — only shown when paint lines were
+           submitted as part of the quote. Tells the customer their quote is
+           queued for the dispatcher's volume sign-off before final pricing. -->
+      <div id="volumeStatusBox" style="display:none;text-align:left;background:#fff5d7;border:1px solid rgba(245,184,0,0.4);
+                                       border-radius:12px;padding:16px 18px;margin:12px 0 20px;">
+        <strong style="display:block;color:#6B4F00;margin-bottom:6px;">🪣 Paint volume queued for review</strong>
+        <span class="small" id="volumeStatusBody" style="color:#6B4F00;line-height:1.55;"></span>
+      </div>
+
+      <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">
+        <a href="track.html" class="btn btn-primary">Track my project →</a>
+        <a href="index.html" class="btn btn-ghost">Back to home</a>
+      </div>
+    </div>
+  </div>
+
+  <div id="pm-footer"></div>
+  <script src="assets/shared.js"></script>
+  <script>
+    pmMountLayout('quote');
+    // Populate city dropdown from the central pmRegions store.
+    pmRegions.populate(document.getElementById('fCity'), 'Accra', { includeOther: true });
+
+    const saved = pmLoadQuote();
+    const book = {
+      step: 1,
+      date: null,
+      window: 'morning',
+      payment: 'momo',
+      ref: 'PM-' + Math.floor(100000 + Math.random() * 900000)
+    };
+
+    // ---------- Populate summary from saved quote ----------
+    function renderSummary() {
+      if (!saved || !saved.quote) {
+        document.getElementById('bService').innerHTML = '<em>No quote found. <a href="quote.html" style="color:var(--gold-500);">Start a new quote →</a></em>';
+        return;
+      }
+      const q = saved.quote;
+      document.getElementById('bTotal').innerHTML = pmFormatGHS(q.total) + ' <small>total</small>';
+      document.getElementById('bDeposit').textContent = pmFormatGHS(q.total * 0.4);
+      document.getElementById('bService').innerHTML = `
+        <strong>${q.svc.name}</strong><br/>
+        <span style="color:rgba(255,255,255,0.7);">${saved.rooms} room(s) · ${saved.tier} paint · ${saved.finish} finish</span>
+      `;
+      document.getElementById('bArea').textContent = q.area.toFixed(1) + ' m²';
+      document.getElementById('bLabour').textContent = pmFormatGHS(q.labour);
+      document.getElementById('bMaterials').textContent = pmFormatGHS(q.materials);
+      document.getElementById('bVAT').textContent = pmFormatGHS(q.vat);
+
+      document.getElementById('cDate').textContent = new Date().toLocaleDateString('en-GB', { day:'numeric', month:'long', year:'numeric' });
+      document.getElementById('bRef').textContent = book.ref;
+    }
+    renderSummary();
+
+    // ---------- Calendar ----------
+    const today = new Date();
+    let calMonth = today.getMonth();
+    let calYear = today.getFullYear();
+    const bookedDays = {}; // cache per month
+
+    function isBooked(dateStr) {
+      // Pseudo-random "booked" schedule, stable per date
+      let h = 0; for (let i=0; i<dateStr.length; i++) h = (h*31 + dateStr.charCodeAt(i)) >>> 0;
+      return (h % 7) === 0;
+    }
+
+    function renderCalendar() {
+      const host = document.getElementById('cal');
+      const first = new Date(calYear, calMonth, 1);
+      const last  = new Date(calYear, calMonth + 1, 0);
+      const monthName = first.toLocaleDateString('en-US', { month:'long', year:'numeric' });
+      const firstDow = first.getDay();
+      const daysInMonth = last.getDate();
+
+      let html = `
+        <div class="cal-head">
+          <button onclick="navMonth(-1)">◀</button>
+          <strong>${monthName}</strong>
+          <button onclick="navMonth(1)">▶</button>
+        </div>
+        <div class="cal-grid">
+          ${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d => `<div class="dow">${d}</div>`).join('')}
+      `;
+      for (let i = 0; i < firstDow; i++) html += `<div class="cal-day muted"></div>`;
+      for (let d = 1; d <= daysInMonth; d++) {
+        const date = new Date(calYear, calMonth, d);
+        const iso = date.toISOString().slice(0,10);
+        const isPast = date < new Date(today.getFullYear(), today.getMonth(), today.getDate());
+        const isSunday = date.getDay() === 0;
+        let cls = 'available';
+        if (isPast || isSunday) cls = 'disabled';
+        else if (isBooked(iso)) cls = 'booked';
+        if (book.date === iso) cls += ' selected';
+        html += `<button type="button" class="cal-day ${cls}" data-iso="${iso}">${d}</button>`;
+      }
+      html += '</div>';
+      host.innerHTML = html;
+
+      host.querySelectorAll('.cal-day.available, .cal-day.selected').forEach(el => {
+        el.addEventListener('click', () => {
+          book.date = el.dataset.iso;
+          renderCalendar();
+          const d = new Date(book.date);
+          document.getElementById('bDate').textContent = d.toLocaleDateString('en-GB', { weekday:'short', day:'numeric', month:'short' });
+        });
+      });
+    }
+    function navMonth(dir) {
+      calMonth += dir;
+      if (calMonth < 0) { calMonth = 11; calYear--; }
+      if (calMonth > 11) { calMonth = 0; calYear++; }
+      renderCalendar();
+    }
+    renderCalendar();
+
+    // ---------- Window ----------
+    document.getElementById('windowGroup').addEventListener('click', e => {
+      const b = e.target.closest('.chip'); if (!b) return;
+      document.querySelectorAll('#windowGroup .chip').forEach(c => c.classList.remove('active'));
+      b.classList.add('active');
+      book.window = b.dataset.window;
+      document.getElementById('bWindow').textContent = b.textContent.split(' (')[0];
+    });
+
+    // ---------- Step nav ----------
+    function stepTo(n) {
+      if (n === 2 && !book.date) { pmToast('Please pick a start date first.', 'warn'); return; }
+      document.querySelectorAll('.quote-panel').forEach(p => p.classList.remove('active'));
+      document.querySelector(`.quote-panel[data-panel="${n}"]`).classList.add('active');
+      // Stepper visuals
+      document.querySelectorAll('#stepper .s').forEach(s => {
+        const sn = Number(s.dataset.s);
+        s.classList.remove('active','done');
+        if (sn < n) s.classList.add('done');
+        else if (sn === n) s.classList.add('active');
+      });
+      book.step = n;
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function validateStep2() {
+      const name  = document.getElementById('fName').value.trim();
+      const phone = document.getElementById('fPhone').value.trim();
+      const email = document.getElementById('fEmail').value.trim();
+      const addr  = document.getElementById('fAddress').value.trim();
+      if (!name || !phone || !email || !addr) {
+        pmToast('Please fill in all required fields.', 'warn'); return;
+      }
+      document.getElementById('cName').textContent = name;
+      stepTo(3);
+    }
+
+    function validateStep3() {
+      const sign  = document.getElementById('fSign').value.trim();
+      const agree = document.getElementById('fAgree').checked;
+      const name  = document.getElementById('fName').value.trim();
+      if (!agree) { pmToast('Please tick the agreement checkbox.', 'warn'); return; }
+      if (sign.length < 3) { pmToast('Please type your full name as your signature.', 'warn'); return; }
+      if (name && sign.toLowerCase() !== name.toLowerCase()) {
+        pmToast('Signature should match your full name.', 'warn'); return;
+      }
+      stepTo(4);
+    }
+
+    // ---------- Payment toggle ----------
+    document.getElementById('payGroup').addEventListener('click', e => {
+      const b = e.target.closest('.chip'); if (!b) return;
+      document.querySelectorAll('#payGroup .chip').forEach(c => c.classList.remove('active'));
+      b.classList.add('active');
+      book.payment = b.dataset.pay;
+      document.querySelectorAll('[data-pay-panel]').forEach(p => p.classList.toggle('hidden', p.dataset.payPanel !== book.payment));
+    });
+
+    // ---------- Backend submission ----------
+    //
+    // Translate the client-side quote state into the /api/quotes payload and
+    // POST it. The backend's calculateQuote() uses a simpler model (per-sqm
+    // rate × area + day-rate × days) so the persisted total will not match
+    // what the customer saw in the quote builder — we keep the client total
+    // as the displayed price and let the backend store its own breakdown
+    // for accounting. The win here is that paintLines flow through, the
+    // quote gets a real ID, and the dispatcher's Volume Reviews screen
+    // immediately picks it up.
+
+    // Map a client SERVICES id → one of the backend RATE_PER_SQM keys
+    // (Interior | Exterior | Commercial | Decorative | Waterproofing | Repaint).
+    function mapServiceToBackend(category, serviceId) {
+      if (category === 'commercial') return 'Commercial';
+      if (category === 'decorative') return 'Decorative';
+      if (category === 'specialty') {
+        // Waterproof and pool both lean on the waterproofing line; everything
+        // else in specialty maps cleanly to Exterior or Repaint.
+        if (serviceId === 'waterproof' || serviceId === 'pool')   return 'Waterproofing';
+        if (serviceId === 'roof'       || serviceId === 'fence')  return 'Exterior';
+        return 'Repaint';
+      }
+      // Residential — exterior façade is the only outdoor one.
+      if (serviceId === 'ext_facade') return 'Exterior';
+      return 'Interior';
+    }
+
+    // Derive a reasonable duration in days from area. One painter covers
+    // roughly 50 m² per working day at standard prep depth; clamp to 1..60.
+    function estimateDurationDays(areaSqm) {
+      const d = Math.max(1, Math.ceil(Number(areaSqm) / 50));
+      return Math.min(60, d);
+    }
+
+    // Build the POST /api/quotes payload from the saved state plus the
+    // booking-page form fields. paintLines pass through verbatim — they're
+    // already in the shape services/paintVolume.recordEstimate expects.
+    function buildQuotePayload() {
+      const q = saved && saved.quote ? saved.quote : {};
+      const service = mapServiceToBackend(saved.category, saved.serviceId);
+      const area    = Math.max(5, Math.round((q.area || 5) * 10) / 10);
+      const days    = estimateDurationDays(area);
+      // Day rate is implied — split the labour figure across the days. Floor
+      // at the backend's MIN_RATE_PER_DAY (50) and cap at MAX (2000).
+      const dayRate = Math.min(2000, Math.max(50, Math.round(((q.labour || 200) / days))));
+
+      const cityField = document.getElementById('fCity');
+      const city = cityField ? cityField.value.trim() : null;
+
+      return {
+        service,
+        area_sqm:           area,
+        duration_days:      days,
+        rate_per_day:       dayRate,
+        materials_included: true,
+        city,
+        address: document.getElementById('fAddress').value.trim() || null,
+        notes:   document.getElementById('fNotes').value.trim() || null,
+        paintLines: Array.isArray(saved && saved.paintLines) ? saved.paintLines : [],
+        // Skip the volume gate entirely if no lines were entered upstream —
+        // otherwise the quote sits in 'pending_review' forever with nothing
+        // for the dispatcher to look at.
+        volume_required: Array.isArray(saved && saved.paintLines) && saved.paintLines.length > 0,
+      };
+    }
+
+    // Wrap fetch with a short timeout so a stalled backend doesn't keep the
+    // customer staring at a spinner. 6 seconds is the usual threshold beyond
+    // which "is something broken?" overtakes "this is just slow".
+    async function postQuote(payload) {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 6000);
+      try {
+        const res = await fetch('/api/quotes', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify(payload),
+          signal:  ctrl.signal,
+        });
+        const j = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          const msg = j && j.message ? j.message : `HTTP ${res.status}`;
+          throw new Error(msg);
+        }
+        return j;
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+
+    async function confirmBooking() {
+      // 1. Persist locally first — even if the backend POST below fails, the
+      //    customer's local copy of the booking is intact and Track / My
+      //    Account still work in the demo.
+      const payload = { ...book, quote: saved, bookedAt: Date.now() };
+      try { localStorage.setItem('pm_booking_v1', JSON.stringify(payload)); } catch(e){}
+
+      // 2. Demo bridge — push into admin localStorage so the Job Board
+      //    surfaces a "New Request" card. Replaced by POST /api/bookings
+      //    once the bookings backend integration lands.
+      const q = saved && saved.quote ? saved.quote : {};
+      pmCreateAdminJob({
+        ref:      book.ref,
+        customer: document.getElementById('fName').value.trim() || 'Customer',
+        service:  q.svc ? q.svc.name : 'Painting',
+        area:     q.area || 0,
+        amount:   q.total || 0,
+        date:     book.date,
+        window:   book.window,
+        address:  document.getElementById('fAddress').value.trim() || '',
+        tags:     [q.svc ? q.svc.name.split(' ')[0] : 'Residential'],
+        payment_method: book.payment
+      });
+
+      // 3. POST to the backend so the quote + paint lines reach the
+      //    dispatcher's Volume Reviews queue. We swallow failures gracefully
+      //    — the customer-facing demo flow keeps working either way.
+      const lineCount = Array.isArray(saved && saved.paintLines) ? saved.paintLines.length : 0;
+      const statusBox  = document.getElementById('volumeStatusBox');
+      const statusBody = document.getElementById('volumeStatusBody');
+      let bookingRefHtml = `<strong>Booking reference:</strong> ${book.ref}`;
+
+      try {
+        const apiPayload = buildQuotePayload();
+        const apiResult  = await postQuote(apiPayload);
+
+        if (apiResult && apiResult.quote && apiResult.quote.id) {
+          bookingRefHtml = `
+            <strong>Booking reference:</strong> ${book.ref}<br/>
+            <strong>Quote ID:</strong> <span style="font-family:ui-monospace,Menlo,monospace;">${apiResult.quote.id}</span>`;
+          // Stash the live quote ID alongside the local booking so Track can
+          // pull volume_status updates as the dispatcher confirms / rejects.
+          try {
+            const stored = JSON.parse(localStorage.getItem('pm_booking_v1') || '{}');
+            stored.quoteId       = apiResult.quote.id;
+            stored.volumeStatus  = apiResult.quote.volume_status;
+            stored.paintLineCount = apiResult.persisted_paint_lines || 0;
+            localStorage.setItem('pm_booking_v1', JSON.stringify(stored));
+          } catch (_) { /* ignore */ }
+
+          if (lineCount > 0 && apiResult.quote.volume_status === 'pending_review') {
+            statusBox.style.display = 'block';
+            statusBody.innerHTML = `
+              ${apiResult.persisted_paint_lines} paint product line${apiResult.persisted_paint_lines === 1 ? '' : 's'}
+              submitted for dispatcher review. We'll confirm the exact litres and bucket count
+              within 24 hours — usually much faster — and email you once the quote is locked.
+            `;
+          }
+        }
+      } catch (err) {
+        // Backend down or rejected the payload. The local booking is fine;
+        // just nudge the customer that final pricing may differ once a
+        // human looks at it. We do NOT block the success screen.
+        console.warn('Quote POST failed:', err && err.message);
+        if (lineCount > 0) {
+          statusBox.style.display = 'block';
+          statusBody.innerHTML = `
+            We've saved your selections locally and a dispatcher will follow up
+            on the paint volume estimate by phone or email. Booking reference
+            <strong>${book.ref}</strong> is your tracking handle until then.
+          `;
+        }
+      }
+
+      document.getElementById('bookingRef').innerHTML = bookingRefHtml;
+      document.getElementById('successModal').classList.remove('hidden');
+    }
+  </script>
+</body>
+</html>

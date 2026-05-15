@@ -1,0 +1,23 @@
+# Dependencies
+node_modules/
+
+# Local env / secrets — never commit
+.env
+.env.*
+!.env.example
+
+# SQLite working files
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

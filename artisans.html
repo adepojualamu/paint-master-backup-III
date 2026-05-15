@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" type="image/png" href="assets/img/favicon.png" />
+  <title>Our Paint Masters — Paint Masters Ghana</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/styles.css" />
+  <style>
+    /* Search bar on the artisans page — sits between the page lede and the
+       speciality chip-filter row. Same look as the rest of the form fields,
+       sized to feel like a native search. */
+    .art-search {
+      max-width: 520px; margin: 24px auto 0; position: relative;
+    }
+    .art-search input {
+      width: 100%; padding: 13px 16px 13px 44px;
+      border: 1.5px solid var(--ink-300); border-radius: 999px;
+      font-size: 0.95rem; font-family: inherit; background: #fff;
+      box-shadow: 0 1px 2px rgba(11,31,58,0.04);
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .art-search input:focus {
+      outline: 0; border-color: var(--navy-700);
+      box-shadow: 0 0 0 4px rgba(46,112,201,0.10);
+    }
+    .art-search .ico {
+      position: absolute; left: 16px; top: 50%; transform: translateY(-50%);
+      color: var(--ink-500); font-size: 1rem;
+    }
+    .art-empty {
+      grid-column: 1 / -1; text-align: center; padding: 40px 24px;
+      color: var(--ink-500);
+    }
+    .art-empty strong { color: var(--ink-900); display: block; font-size: 1.05rem; margin-bottom: 4px; }
+  </style>
+</head>
+<body>
+  <div id="pm-nav"></div>
+
+  <section class="section-sm" style="background:linear-gradient(180deg,#F7FAFD,#FFFFFF);">
+    <div class="container text-center" style="padding:56px 24px 24px;">
+      <span class="eyebrow">Meet the Team</span>
+      <h1 class="mt-16">Our certified Paint Masters</h1>
+      <p style="max-width:640px;margin:0 auto;">Every Master completes a 6-week training and a specialisation module. This is the roster that shows up at your door — not a stranger off the street.</p>
+
+      <div class="art-search">
+        <span class="ico" aria-hidden="true">🔍</span>
+        <input id="artSearch" type="search" placeholder="Search by name, region, or speciality…" aria-label="Search Paint Masters" />
+      </div>
+
+      <div class="chip-group mt-24" style="justify-content:center;" id="filterSpec">
+        <button class="chip active" data-spec="all">All Masters</button>
+        <button class="chip" data-spec="interior">Interior</button>
+        <button class="chip" data-spec="decorative">Decorative</button>
+        <button class="chip" data-spec="commercial">Commercial</button>
+        <button class="chip" data-spec="epoxy">Epoxy & Floor</button>
+        <button class="chip" data-spec="roof">Roof & Exterior</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" style="padding-top:24px;">
+    <div class="container">
+      <div class="grid grid-4" id="artGrid"></div>
+    </div>
+  </section>
+
+  <!-- Join us CTA -->
+  <section class="section section-muted">
+    <div class="container">
+      <div class="grid grid-2" style="align-items:center;gap:40px;">
+        <div>
+          <span class="eyebrow">Are you a painter?</span>
+          <h2 class="mt-16">Become a Paint Master</h2>
+          <p>We're training the next generation of professional Ghanaian artisans. Six weeks of paid training, guaranteed job roster, and the chance to specialise in the highest-paid niches.</p>
+          <ul style="list-style:none;padding:0;display:grid;gap:8px;color:var(--ink-700);">
+            <li>✅ Paid training (GHS 1,500 stipend during weeks 1–6)</li>
+            <li>✅ Tools, PPE, and uniform provided</li>
+            <li>✅ Guaranteed minimum monthly booking</li>
+            <li>✅ Health insurance after 90 days</li>
+            <li>✅ Performance-based promotion path</li>
+          </ul>
+          <a href="register.html?source=academy" class="btn btn-primary mt-16">Apply to the Academy →</a>
+        </div>
+        <div class="card" style="padding:32px;background:var(--navy-900);color:#fff;">
+          <h3 style="color:#fff;">Next cohort</h3>
+          <div style="font-family:var(--font-display);font-size:2.2rem;color:var(--gold-500);">15 June 2026</div>
+          <p style="color:rgba(255,255,255,0.8);">Enrollment closes 1 June. 30 seats available across Accra, Tema, and Kumasi.</p>
+          <div class="stats" style="grid-template-columns:1fr 1fr;gap:12px;margin-top:16px;">
+            <div class="stat"><div class="num">92%</div><div class="lbl">Graduate employment</div></div>
+            <div class="stat"><div class="num">6 wk</div><div class="lbl">Paid training</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div id="pm-footer"></div>
+  <script src="assets/shared.js"></script>
+  <script>
+    pmMountLayout('artisans');
+
+    const MASTERS = [
+      { initials:'KA', name:'Kofi Asante',     spec:['interior','decorative'],   years:7, rating:4.9, jobs:1, region:'Accra' },
+      { initials:'AM', name:'Ama Mensah',      spec:['decorative','interior'],    years:5, rating:4.9, jobs:1, region:'Accra' },
+      { initials:'YO', name:'Yaw Owusu',       spec:['commercial','epoxy'],       years:10,rating:4.8, jobs:2, region:'Tema' },
+      { initials:'AB', name:'Abena Boateng',   spec:['interior'],                 years:4, rating:4.9, jobs:9,  region:'Accra' },
+      { initials:'KD', name:'Kwame Dankwa',    spec:['roof','commercial'],        years:12,rating:4.8, jobs:30, region:'Kumasi' },
+      { initials:'EA', name:'Efua Adjei',      spec:['decorative'],               years:6, rating:5.0, jobs:40, region:'Accra' },
+      { initials:'KN', name:'Kojo Ntim',       spec:['epoxy','commercial'],       years:8, rating:4.8, jobs:20, region:'Accra' },
+      { initials:'AS', name:'Akosua Sarpong',  spec:['interior','roof'],          years:3, rating:4.7, jobs:72,  region:'Cape Coast' },
+      { initials:'KB', name:'Kwabena Botwe',   spec:['roof'],                     years:9, rating:4.9, jobs:18, region:'Tema' },
+      { initials:'AD', name:'Adwoa Darko',     spec:['interior','decorative'],    years:5, rating:4.9, jobs:11, region:'Accra' },
+      { initials:'YB', name:'Yaa Boadu',       spec:['commercial'],               years:11,rating:4.8, jobs:25, region:'Accra' },
+      { initials:'KO', name:'Kwesi Ofori',     spec:['epoxy','roof'],             years:6, rating:4.8, jobs:16, region:'Takoradi' }
+    ];
+
+    const SPEC_LABEL = { interior:'Interior', decorative:'Decorative', commercial:'Commercial', epoxy:'Epoxy/Floor', roof:'Roof/Exterior' };
+
+    // Current filter state — chip + free-text query are combined.
+    let currentSpec  = 'all';
+    let currentQuery = '';
+
+    function render() {
+      const host = document.getElementById('artGrid');
+      const q = currentQuery.trim().toLowerCase();
+      const filtered = MASTERS.filter(m => {
+        if (currentSpec !== 'all' && !m.spec.includes(currentSpec)) return false;
+        if (!q) return true;
+        // Match against name, region, and the human-readable speciality labels.
+        const haystack = [
+          m.name,
+          m.region,
+          ...m.spec.map(s => SPEC_LABEL[s] || s)
+        ].join(' ').toLowerCase();
+        return haystack.includes(q);
+      });
+
+      if (!filtered.length) {
+        host.innerHTML = `
+          <div class="art-empty">
+            <strong>No Paint Masters match that search.</strong>
+            Try clearing the search, picking a different speciality, or
+            <a href="quote.html" style="color:var(--navy-900);font-weight:600;">request a quote</a>
+            and we'll dispatch the right Master for the job.
+          </div>`;
+        return;
+      }
+
+      host.innerHTML = filtered.map(m => `
+        <div class="card artisan">
+          <div class="ph">${m.initials}</div>
+          <strong style="font-size:1.05rem;">${m.name}</strong>
+          <div class="small">${m.region} · ${m.years} yrs experience</div>
+          <div class="specs">
+            ${m.spec.map(s => `<span class="pill">${SPEC_LABEL[s]}</span>`).join('')}
+          </div>
+          <div class="flex-between" style="margin-top:14px;padding-top:14px;border-top:1px solid var(--ink-100);">
+            <div><strong style="color:var(--gold-500);">★ ${m.rating}</strong></div>
+            <div class="small">${m.jobs} jobs completed</div>
+          </div>
+        </div>
+      `).join('');
+    }
+    render();
+
+    document.getElementById('filterSpec').addEventListener('click', e => {
+      const b = e.target.closest('.chip'); if (!b) return;
+      document.querySelectorAll('#filterSpec .chip').forEach(c => c.classList.remove('active'));
+      b.classList.add('active');
+      currentSpec = b.dataset.spec;
+      render();
+    });
+
+    document.getElementById('artSearch').addEventListener('input', e => {
+      currentQuery = e.target.value;
+      render();
+    });
+  </script>
+</body>
+</html>

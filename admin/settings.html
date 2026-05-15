@@ -1,0 +1,1429 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" type="image/png" href="../assets/img/favicon.png" />
+  <title>Settings — Paint Masters Dispatcher</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/admin.css" />
+  <style>
+    /* Settings-page-only styles. Reuses the global CSS variables. */
+    .settings-grid { display: grid; grid-template-columns: 220px 1fr; gap: 28px; align-items: start; }
+    @media (max-width: 900px) { .settings-grid { grid-template-columns: 1fr; } }
+
+    .settings-tabs {
+      display: flex; flex-direction: column; gap: 4px;
+      background: #fff; border: 1px solid var(--ink-100); border-radius: 14px; padding: 8px;
+      position: sticky; top: 96px;
+    }
+    .settings-tabs button {
+      text-align: left; border: 0; background: transparent;
+      padding: 11px 14px; border-radius: 9px;
+      color: var(--ink-700); font-weight: 500; font-size: 0.92rem; cursor: pointer;
+      font-family: inherit; display: flex; align-items: center; gap: 10px;
+    }
+    .settings-tabs button:hover { background: var(--ink-100); }
+    .settings-tabs button.active { background: var(--navy-900); color: #fff; }
+
+    .settings-pane { display: none; }
+    .settings-pane.active { display: block; }
+
+    .panel + .panel { margin-top: 16px; }
+
+    .form-row { display: grid; grid-template-columns: 220px 1fr; gap: 20px; padding: 18px 0; border-bottom: 1px solid var(--ink-100); align-items: start; }
+    .form-row:last-child { border-bottom: 0; }
+    .form-row .lbl strong { display: block; font-size: 0.95rem; color: var(--navy-900); margin-bottom: 4px; }
+    .form-row .lbl small  { color: var(--ink-500); font-size: 0.82rem; line-height: 1.5; }
+    .form-row .ctl input, .form-row .ctl select, .form-row .ctl textarea {
+      width: 100%; padding: 10px 12px; border: 1.5px solid var(--ink-300);
+      border-radius: 9px; font-size: 0.92rem; font-family: inherit; background: #fff;
+    }
+    .form-row .ctl input:focus, .form-row .ctl select:focus, .form-row .ctl textarea:focus {
+      outline: 0; border-color: var(--navy-700); box-shadow: 0 0 0 4px rgba(46,112,201,0.10);
+    }
+    .form-row .ctl .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .form-row .ctl .small-help { font-size: 0.78rem; color: var(--ink-500); margin-top: 6px; }
+
+    .logo-preview {
+      display: flex; gap: 16px; align-items: center; padding: 16px;
+      background: var(--ink-50); border: 1px dashed var(--ink-300); border-radius: 12px;
+    }
+    .logo-preview .brand-mark.xxl { background: var(--navy-900); }
+    .logo-preview .meta strong { display: block; color: var(--navy-900); margin-bottom: 4px; }
+    .logo-preview .meta small  { color: var(--ink-500); font-size: 0.82rem; display: block; line-height: 1.5; }
+
+    .toggle { display: inline-flex; align-items: center; gap: 10px; font-size: 0.92rem; color: var(--ink-700); cursor: pointer; }
+    .toggle input { width: auto; }
+
+    .danger-card {
+      background: #FFF5F5; border: 1px solid #FECACA; padding: 16px 18px; border-radius: 12px;
+      display: flex; justify-content: space-between; align-items: center; gap: 16px;
+    }
+    .danger-card strong { color: #991B1B; display: block; }
+    .danger-card small  { color: #7F1D1D; font-size: 0.82rem; }
+    .danger-card .btn   { background: #DC2626; color: #fff; border: 0; }
+    .danger-card .btn:hover { background: #B91C1C; }
+
+    .swatch { display: inline-block; width: 26px; height: 26px; border-radius: 6px; border: 1px solid var(--ink-300); vertical-align: middle; margin-right: 6px; }
+
+    /* ─── Hero slide editor ───
+       Each slide is one row with a thumbnail, the editable fields, and the
+       per-slide controls (move up / down / remove). Mirrors the look of the
+       form-rows above so it feels native to the Settings page. */
+    .slide-editor { display: grid; gap: 12px; }
+    .slide-row {
+      display: grid; grid-template-columns: 84px 1fr auto; gap: 14px;
+      padding: 14px; border: 1px solid var(--ink-100); border-radius: 12px;
+      background: #fff;
+    }
+    .slide-row .thumb {
+      width: 84px; height: 84px; border-radius: 10px; overflow: hidden;
+      background: linear-gradient(135deg, var(--navy-700), var(--gold-500));
+      display: grid; place-items: center;
+      color: #fff; font-weight: 700; font-size: 0.8rem; text-align: center;
+    }
+    .slide-row .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .slide-row .fields { display: grid; gap: 8px; }
+    .slide-row .fields .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .slide-row input {
+      width: 100%; padding: 8px 10px; border: 1.5px solid var(--ink-300);
+      border-radius: 8px; font-size: 0.88rem; font-family: inherit; background: #fff;
+    }
+    .slide-row input:focus { outline: 0; border-color: var(--navy-700); box-shadow: 0 0 0 3px rgba(46,112,201,0.10); }
+    .slide-row .controls { display: flex; flex-direction: column; gap: 6px; align-items: stretch; }
+    .slide-row .controls button {
+      width: 32px; height: 28px; border-radius: 7px;
+      background: var(--ink-100); color: var(--ink-700);
+      font-family: inherit; font-size: 0.95rem; cursor: pointer;
+      border: 0;
+    }
+    .slide-row .controls button:hover { background: var(--ink-300); color: var(--navy-900); }
+    .slide-row .controls .del { background: #FEE2E2; color: #991B1B; }
+    .slide-row .controls .del:hover { background: #FCA5A5; color: #7F1D1D; }
+    .slide-row .upload-line {
+      display: flex; gap: 8px; align-items: center;
+      font-size: 0.78rem; color: var(--ink-500);
+    }
+    .slide-row .upload-line button {
+      background: var(--navy-900); color: #fff; padding: 6px 10px;
+      border: 0; border-radius: 7px; font-size: 0.78rem; font-weight: 600;
+      cursor: pointer; font-family: inherit;
+    }
+    .slide-row .upload-line button:hover { background: var(--navy-800); }
+
+    .slide-add {
+      padding: 12px 16px; border: 1.5px dashed var(--ink-300);
+      border-radius: 10px; background: #fff; cursor: pointer;
+      color: var(--ink-700); font-weight: 600; font-family: inherit;
+      transition: border-color 0.15s, color 0.15s, background 0.15s;
+    }
+    .slide-add:hover { border-color: var(--gold-500); color: var(--navy-900); background: var(--gold-100); }
+
+    /* ── Region editor (catchment areas) ───
+       Compact table-like layout: name + travel surcharge per row, with the
+       same up/down/remove controls as the slide editor. */
+    .region-editor { display: grid; gap: 10px; }
+    .region-row {
+      display: grid; grid-template-columns: 1fr 180px auto; gap: 12px;
+      padding: 12px 14px; border: 1px solid var(--ink-100); border-radius: 10px;
+      background: #fff; align-items: center;
+    }
+    .region-row input {
+      width: 100%; padding: 8px 10px; border: 1.5px solid var(--ink-300);
+      border-radius: 8px; font-size: 0.9rem; font-family: inherit; background: #fff;
+    }
+    .region-row input:focus { outline: 0; border-color: var(--navy-700); box-shadow: 0 0 0 3px rgba(46,112,201,0.10); }
+    .region-row .surcharge { display: flex; align-items: center; gap: 6px; color: var(--ink-500); font-size: 0.82rem; }
+    .region-row .surcharge input { max-width: 100px; }
+    .region-row .controls { display: flex; gap: 6px; }
+    .region-row .controls button {
+      width: 32px; height: 28px; border-radius: 7px;
+      background: var(--ink-100); color: var(--ink-700);
+      font-family: inherit; font-size: 0.95rem; cursor: pointer; border: 0;
+    }
+    .region-row .controls button:hover { background: var(--ink-300); color: var(--navy-900); }
+    .region-row .controls .del { background: #FEE2E2; color: #991B1B; }
+    .region-row .controls .del:hover { background: #FCA5A5; color: #7F1D1D; }
+    @media (max-width: 720px) {
+      .region-row { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="admin-shell">
+    <div id="admin-sidebar"></div>
+    <div class="admin-main">
+      <div id="admin-topbar"></div>
+      <div class="main">
+
+        <div class="page-head">
+          <div>
+            <h1>Settings</h1>
+            <div class="sub">Branding, account, and system preferences for Paint Masters.</div>
+          </div>
+          <div class="page-actions">
+            <button class="btn btn-outline" onclick="resetSettings()">Reset to defaults</button>
+            <button class="btn btn-primary" onclick="saveSettings()">Save changes</button>
+          </div>
+        </div>
+
+        <div class="settings-grid mt-24">
+          <!-- Left: tab list -->
+          <nav class="settings-tabs" aria-label="Settings sections">
+            <button class="active" data-tab="branding"><span>🎨</span> Branding</button>
+            <button data-tab="account"><span>👤</span> Account</button>
+            <button data-tab="business"><span>🏢</span> Business</button>
+            <button data-tab="pricing"><span>💵</span> Pricing</button>
+            <button data-tab="notifications"><span>🔔</span> Notifications</button>
+            <button data-tab="security"><span>🔒</span> Security</button>
+            <button data-tab="data"><span>🗄️</span> Data</button>
+          </nav>
+
+          <!-- Right: panes -->
+          <div>
+
+            <!-- ── Branding ─────────────────────────────────────────────── -->
+            <section class="settings-pane active" id="pane-branding">
+              <div class="panel">
+                <div class="panel-head"><h3>Logo &amp; visual identity</h3></div>
+                <div class="panel-body">
+
+                  <div class="logo-preview">
+                    <span class="brand-mark xxl" id="logoPreviewMark">
+                      <img src="../assets/img/paint-masters-logo.png" alt="Paint Masters logo"
+                           onerror="this.replaceWith(document.createTextNode('PM'))" />
+                    </span>
+                    <div class="meta">
+                      <strong>Current brand mark</strong>
+                      <small>This is exactly what renders in the customer header, footer, admin sidebar, and login screen.</small>
+                      <small style="margin-top:6px;">Drop your file at <code>assets/img/paint-masters-logo.png</code> (or change the path below).</small>
+                    </div>
+                  </div>
+
+                  <div class="form-row">
+                    <div class="lbl">
+                      <strong>Logo path</strong>
+                      <small>Where to load the brand mark from. Customer pages resolve this from the project root; admin pages prepend "../" automatically.</small>
+                    </div>
+                    <div class="ctl">
+                      <input type="text" id="logoSrc" value="assets/img/paint-masters-logo.png" />
+                      <div class="small-help">Tip: SVG works best for sharp edges at any size.</div>
+                    </div>
+                  </div>
+
+                  <div class="form-row">
+                    <div class="lbl">
+                      <strong>Fallback text</strong>
+                      <small>Shown in the brand box if the image is missing.</small>
+                    </div>
+                    <div class="ctl">
+                      <input type="text" id="brandText" value="PM" maxlength="3" style="max-width:100px;" />
+                    </div>
+                  </div>
+
+                  <div class="form-row">
+                    <div class="lbl">
+                      <strong>Wordmark</strong>
+                      <small>The "PAINT MASTERS" text next to the brand mark.</small>
+                    </div>
+                    <div class="ctl">
+                      <div class="pair">
+                        <input type="text" id="wordmark1" value="PAINT" placeholder="First word" />
+                        <input type="text" id="wordmark2" value="MASTERS" placeholder="Second word" />
+                      </div>
+                    </div>
+                  </div>
+
+                </div>
+              </div>
+
+              <div class="panel">
+                <div class="panel-head"><h3>Colors</h3></div>
+                <div class="panel-body">
+                  <div class="form-row">
+                    <div class="lbl"><strong>Primary navy</strong><small>Used in the brand mark background and headings.</small></div>
+                    <div class="ctl">
+                      <span class="swatch" style="background:#0B1F3A;"></span>
+                      <input type="color" value="#0B1F3A" id="colorNavy" style="max-width:120px;display:inline-block;" />
+                    </div>
+                  </div>
+                  <div class="form-row">
+                    <div class="lbl"><strong>Accent gold</strong><small>Used for CTAs and the "MASTERS" wordmark accent.</small></div>
+                    <div class="ctl">
+                      <span class="swatch" style="background:#F5B800;"></span>
+                      <input type="color" value="#F5B800" id="colorGold" style="max-width:120px;display:inline-block;" />
+                    </div>
+                  </div>
+                  <div class="form-row">
+                    <div class="lbl"><strong>Kente accent</strong><small>The red/gold/green stripe under the brand mark.</small></div>
+                    <div class="ctl">
+                      <label class="toggle"><input type="checkbox" id="kenteToggle" checked /> Show kente stripe</label>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- ── Hero brand slider ───
+                   Edits the slider that fills the hero square on the customer
+                   homepage (index.html). Saves to localStorage; the customer
+                   page re-renders live via the storage event. -->
+              <div class="panel">
+                <div class="panel-head">
+                  <h3>Hero brand slider</h3>
+                  <small style="display:block;color:var(--ink-500);margin-top:6px;font-size:0.85rem;">
+                    Slides shown in the right-hand panel of the homepage hero. Add brand photos, set a caption, link each slide to a brand-filtered page.
+                  </small>
+                </div>
+                <div class="panel-body">
+                  <div class="slide-editor" id="slideEditor"></div>
+                  <button type="button" class="slide-add" id="addSlideBtn" style="margin-top:12px;">＋ Add a slide</button>
+                  <div style="display:flex;gap:10px;margin-top:14px;">
+                    <button type="button" class="btn btn-outline" onclick="resetSlidesToDefaults()" style="font-size:0.85rem;">Reset to defaults</button>
+                    <span class="small-help" style="align-self:center;color:var(--ink-500);font-size:0.8rem;">Changes save automatically. The customer site picks them up live.</span>
+                  </div>
+                  <input type="file" id="slideFileInput" accept="image/*" style="display:none;" />
+                </div>
+              </div>
+            </section>
+
+            <!-- ── Account ─────────────────────────────────────────────── -->
+            <section class="settings-pane" id="pane-account">
+              <div class="panel">
+                <div class="panel-head"><h3>Your profile</h3></div>
+                <div class="panel-body">
+                  <div class="form-row">
+                    <div class="lbl"><strong>Full name</strong></div>
+                    <div class="ctl"><input type="text" id="acctName" /></div>
+                  </div>
+                  <div class="form-row">
+                    <div class="lbl"><strong>Phone</strong><small>Used to sign in.</small></div>
+                    <div class="ctl"><input type="tel" id="acctPhone" /></div>
+                  </div>
+                  <div class="form-row">
+                    <div class="lbl"><strong>Role</strong></div>
+                    <div class="ctl"><input type="text" id="acctRole" disabled /></div>
+                  </div>
+                  <div class="form-row">
+                    <div class="lbl"><strong>Region</strong></div>
+                    <div class="ctl">
+                      <select id="acctRegion" data-pm-regions='{"includeOther":true}'>
+                        <option>Accra</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <!-- ── Business ─────────────────────────────────────────────── -->
+            <section class="settings-pane" id="pane-business">
+              <div class="panel">
+                <div class="panel-head"><h3>Company details</h3></div>
+                <div class="panel-body">
+                  <div class="form-row">
+                    <div class="lbl"><strong>Business name</strong></div>
+                    <div class="ctl"><input type="text" id="bizName" value="Paint Masters Ghana Ltd." /></div>
+                  </div>
+                  <div class="form-row">
+                    <div class="lbl"><strong>Contact email</strong></div>
+                    <div class="ctl"><input type="email" id="bizEmail" value="hello@paintmasters.gh" /></div>
+                  </div>
+                  <div class="form-row">
+                    <div class="lbl"><strong>Contact phone</strong></div>
+                    <div class="ctl"><input type="tel" id="bizPhone" value="+233 54 000 0000" /></div>
+                  </div>
+                  <div class="form-row">
+                    <div class="lbl"><strong>Address</strong></div>
+                    <div class="ctl"><textarea id="bizAddress" rows="2">East Legon, Accra</textarea></div>
+                  </div>
+                  <div class="form-row">
+                    <div class="lbl"><strong>Working hours</strong></div>
+                    <div class="ctl"><input type="text" id="bizHours" value="Mon–Sat, 7am–6pm GMT" /></div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- ── Service regions (catchment area) ───
+                   Single source of truth for every region picker on the
+                   site (register, booking, team invite, job-board filter,
+                   admin profile). Saves to localStorage; pmRegions on
+                   shared.js reads it everywhere. Storage event keeps
+                   open dropdowns live. -->
+              <div class="panel">
+                <div class="panel-head">
+                  <h3>Service regions</h3>
+                  <small style="display:block;color:var(--ink-500);margin-top:6px;font-size:0.85rem;">
+                    Where Paint Masters operates. Add a region and an optional travel surcharge — every region picker on the customer site and admin console will pick it up automatically.
+                  </small>
+                </div>
+                <div class="panel-body">
+                  <div class="region-editor" id="regionEditor"></div>
+                  <button type="button" class="slide-add" id="addRegionBtn" style="margin-top:12px;">＋ Add a region</button>
+                  <div style="display:flex;gap:10px;margin-top:14px;">
+                    <button type="button" class="btn btn-outline" onclick="resetRegionsToDefaults()" style="font-size:0.85rem;">Reset to defaults</button>
+                    <span class="small-help" style="align-self:center;color:var(--ink-500);font-size:0.8rem;">Changes save automatically.</span>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <!-- ── Pricing ─────────────────────────────────────────────── -->
+            <section class="settings-pane" id="pane-pricing">
+              <div class="panel">
+                <div class="panel-head"><h3>Platform economics</h3></div>
+                <div class="panel-body">
+                  <div class="form-row">
+                    <div class="lbl"><strong>Platform fee</strong><small>Percentage taken on each booking.</small></div>
+                    <div class="ctl"><input type="number" id="feePct" value="10" min="0" max="50" step="0.5" style="max-width:120px;" /> <span style="color:var(--ink-500);">%</span></div>
+                  </div>
+                  <div class="form-row">
+                    <div class="lbl"><strong>Painter payout</strong><small>Auto-derived: 100% − platform fee.</small></div>
+                    <div class="ctl"><input type="text" id="payoutPct" value="90.0%" disabled style="max-width:120px;" /></div>
+                  </div>
+                  <div class="form-row">
+                    <div class="lbl"><strong>Materials per sqm</strong><small>Used when "include materials" is selected on a quote.</small></div>
+                    <div class="ctl"><input type="number" id="matPerSqm" value="45" min="0" step="1" style="max-width:120px;" /> <span style="color:var(--ink-500);">GHS</span></div>
+                  </div>
+                  <div class="form-row">
+                    <div class="lbl"><strong>Refund window</strong><small>Hours before job for a full refund. After this, partial refund applies.</small></div>
+                    <div class="ctl"><input type="number" id="refundHrs" value="48" min="0" step="1" style="max-width:120px;" /> <span style="color:var(--ink-500);">hours</span></div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <!-- ── Notifications ─────────────────────────────────────────────── -->
+            <section class="settings-pane" id="pane-notifications">
+              <div class="panel">
+                <div class="panel-head"><h3>Channels</h3></div>
+                <div class="panel-body">
+                  <div class="form-row">
+                    <div class="lbl"><strong>SMS (Hubtel)</strong><small>Booking confirmations and dispatch alerts.</small></div>
+                    <div class="ctl"><label class="toggle"><input type="checkbox" id="notifSms" checked /> Enabled</label></div>
+                  </div>
+                  <div class="form-row">
+                    <div class="lbl"><strong>Email</strong><small>Receipts and warranty certificates.</small></div>
+                    <div class="ctl"><label class="toggle"><input type="checkbox" id="notifEmail" checked /> Enabled</label></div>
+                  </div>
+                  <div class="form-row">
+                    <div class="lbl"><strong>WhatsApp</strong><small>Coming soon — beta with select customers.</small></div>
+                    <div class="ctl"><label class="toggle"><input type="checkbox" id="notifWa" /> Enabled</label></div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Email setup — credentials for the account the platform sends
+                   from. Customer post-booking confirmations, warranty certificate
+                   emails, and (later) password resets all flow through this. -->
+              <div class="panel">
+                <div class="panel-head">
+                  <h3>Email setup</h3>
+                  <span class="small" id="emailStatus" style="color:var(--ink-500);">Not configured</span>
+                </div>
+                <div class="panel-body">
+                  <div class="form-row">
+                    <div class="lbl"><strong>Provider</strong><small>Pick one. SMTP works with any inbox; the API providers are simpler to operate.</small></div>
+                    <div class="ctl">
+                      <select id="emailProvider" style="width:100%;padding:10px 12px;border:1.5px solid var(--ink-300);border-radius:9px;font-size:0.94rem;font-family:inherit;background:#fff;">
+                        <option value="">— Pick a provider —</option>
+                        <option value="smtp">Generic SMTP (Gmail, Outlook, custom server)</option>
+                        <option value="resend">Resend</option>
+                        <option value="sendgrid">SendGrid</option>
+                        <option value="mailgun">Mailgun</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <!-- SMTP fields — visible only when provider = smtp -->
+                  <div id="emailSmtpFields" style="display:none;">
+                    <div class="form-row">
+                      <div class="lbl"><strong>SMTP host</strong></div>
+                      <div class="ctl"><input type="text" id="emailSmtpHost" placeholder="smtp.gmail.com" /></div>
+                    </div>
+                    <div class="form-row">
+                      <div class="lbl"><strong>Port</strong></div>
+                      <div class="ctl"><input type="number" id="emailSmtpPort" placeholder="587" /></div>
+                    </div>
+                    <div class="form-row">
+                      <div class="lbl"><strong>Username</strong></div>
+                      <div class="ctl"><input type="text" id="emailSmtpUser" placeholder="bookings@paintmasters.gh" autocomplete="off" /></div>
+                    </div>
+                    <div class="form-row">
+                      <div class="lbl"><strong>Password / App Password</strong><small>For Gmail use a 16-char App Password (not your real password).</small></div>
+                      <div class="ctl"><input type="password" id="emailSmtpPass" autocomplete="new-password" /></div>
+                    </div>
+                  </div>
+
+                  <!-- API-key field — visible for the three API providers -->
+                  <div id="emailApiKeyField" style="display:none;">
+                    <div class="form-row">
+                      <div class="lbl"><strong>API key</strong><small>Stored locally until the backend route ships. Don't paste production keys into a shared browser.</small></div>
+                      <div class="ctl"><input type="password" id="emailApiKey" autocomplete="new-password" placeholder="re_..." /></div>
+                    </div>
+                  </div>
+
+                  <div class="form-row">
+                    <div class="lbl"><strong>From address</strong><small>What customers see in their inbox.</small></div>
+                    <div class="ctl"><input type="email" id="emailFrom" placeholder="bookings@paintmasters.gh" /></div>
+                  </div>
+                  <div class="form-row">
+                    <div class="lbl"><strong>Reply-to</strong><small>Optional. Where customer replies land.</small></div>
+                    <div class="ctl"><input type="email" id="emailReplyTo" placeholder="support@paintmasters.gh" /></div>
+                  </div>
+                  <div class="form-row">
+                    <div class="lbl"><strong>Auto-send on booking</strong><small>Customer gets a confirmation email immediately after booking.</small></div>
+                    <div class="ctl"><label class="toggle"><input type="checkbox" id="emailAutoBooking" checked /> Enabled</label></div>
+                  </div>
+
+                  <div style="display:flex;gap:8px;justify-content:flex-end;padding-top:14px;border-top:1px solid var(--ink-100);">
+                    <input type="email" id="emailTestTo" placeholder="Send a test to..." style="flex:1;max-width:280px;padding:10px 12px;border:1.5px solid var(--ink-300);border-radius:9px;font-size:0.92rem;font-family:inherit;" />
+                    <button class="btn btn-outline" onclick="sendTestEmail()">Send test</button>
+                    <button class="btn btn-primary" onclick="saveEmailConfig()">Save email setup</button>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <!-- ── Security ─────────────────────────────────────────────── -->
+            <section class="settings-pane" id="pane-security">
+              <div class="panel">
+                <div class="panel-head"><h3>Sign-in &amp; sessions</h3></div>
+                <div class="panel-body">
+                  <div class="form-row">
+                    <div class="lbl"><strong>Change password</strong><small>You'll be signed out on other devices.</small></div>
+                    <div class="ctl">
+                      <div class="pair">
+                        <input type="password" id="curPwd"  placeholder="Current password" />
+                        <input type="password" id="newPwd"  placeholder="New password (min 6)" />
+                      </div>
+                      <div style="margin-top:10px;">
+                        <button class="btn btn-primary" onclick="changePassword()">Update password</button>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="form-row">
+                    <div class="lbl"><strong>Active sessions</strong><small>Currently this browser only.</small></div>
+                    <div class="ctl"><span style="color:var(--ink-500);">1 active session · this device</span></div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="panel">
+                <div class="panel-head"><h3>Danger zone</h3></div>
+                <div class="panel-body">
+                  <div class="danger-card">
+                    <div>
+                      <strong>Reset demo data</strong>
+                      <small>Wipes the local seed data (jobs, customers, inventory) and restores defaults.</small>
+                    </div>
+                    <button class="btn" onclick="if(confirm('Reset all demo data? This cannot be undone.')){ resetState(); toast('Demo data reset.'); setTimeout(()=>location.reload(), 800); }">Reset</button>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <!-- ── Data ─────────────────────────────────────────────────────
+                 The pre-launch tab. Lists every localStorage key the platform
+                 writes to, lets you wipe selected ones, and offers a one-click
+                 "Reset to clean production state" that wipes everything AND
+                 walks you through flipping the production-mode meta tag. -->
+            <section class="settings-pane" id="pane-data">
+              <div class="panel">
+                <div class="panel-head">
+                  <h3>Production-mode status</h3>
+                  <span class="small" id="modeBadge"></span>
+                </div>
+                <div class="panel-body">
+                  <p class="small" style="margin-top:0;color:var(--ink-700);">
+                    Paint Masters runs in <strong>demo</strong> or <strong>production</strong> mode based on the <code>&lt;meta name="pm-mode"&gt;</code> tag in each HTML head. Demo seeds the customer site + admin store with sample data so the platform is browseable from day one. Production starts every store empty so the dispatcher's real entries are the only data on the platform.
+                  </p>
+                  <p class="small" id="modeHint" style="margin-bottom:0;color:var(--ink-700);"></p>
+                </div>
+              </div>
+
+              <div class="panel">
+                <div class="panel-head"><h3>Local data on this device</h3></div>
+                <div class="panel-body">
+                  <p class="small" style="margin-top:0;color:var(--ink-700);">Each row is a localStorage key the platform writes to. Tick the rows you want to clear, then hit "Wipe selected" — local-only, the backend isn't touched.</p>
+                  <div id="dataKeyList" style="display:flex;flex-direction:column;gap:8px;margin-top:14px;"></div>
+                  <div style="display:flex;gap:8px;margin-top:18px;flex-wrap:wrap;">
+                    <button class="btn btn-outline" onclick="selectAllDataKeys(true)">Select all</button>
+                    <button class="btn btn-outline" onclick="selectAllDataKeys(false)">Clear selection</button>
+                    <span style="flex:1;"></span>
+                    <button class="btn" style="background:var(--red);color:#fff;" onclick="wipeSelectedKeys()">🗑 Wipe selected</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="panel">
+                <div class="panel-head"><h3>One-click production reset</h3></div>
+                <div class="panel-body">
+                  <div class="danger-card">
+                    <div>
+                      <strong>Reset to clean production state</strong>
+                      <small>Wipes EVERY localStorage key the platform uses (customer + admin + painter), forces a fresh sign-in, and shows you the meta-tag flip required for production deployment. Use this once, before you push the site online.</small>
+                    </div>
+                    <button class="btn" style="background:var(--red);color:#fff;" onclick="confirmProductionReset()">Reset & switch</button>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <script src="../assets/shared.js"></script>
+  <script src="assets/admin-shared.js"></script>
+  <script>
+    // Mount the standard sidebar/topbar shell with "settings" highlighted.
+    adminMount('settings');
+
+    // Tab switching.
+    const tabs  = document.querySelectorAll('.settings-tabs button');
+    const panes = document.querySelectorAll('.settings-pane');
+    function activateTab(name) {
+      const tab = Array.from(tabs).find(t => t.dataset.tab === name);
+      if (!tab) return;
+      tabs.forEach(x => x.classList.remove('active'));
+      panes.forEach(p => p.classList.remove('active'));
+      tab.classList.add('active');
+      const pane = document.getElementById('pane-' + name);
+      if (pane) pane.classList.add('active');
+    }
+    tabs.forEach(t => t.addEventListener('click', () => activateTab(t.dataset.tab)));
+
+    // Honour ?tab=<name> (and #<name>) so deep-links land on the right pane.
+    // The sidebar role card uses settings.html?tab=account to jump straight
+    // to the Account tab when an admin clicks their own name.
+    (function deepLinkTab() {
+      const params = new URLSearchParams(location.search);
+      const tabFromQuery = params.get('tab');
+      const tabFromHash  = (location.hash || '').replace(/^#/, '');
+      const target = tabFromQuery || tabFromHash;
+      if (target) activateTab(target);
+    })();
+
+    // Hydrate the Account pane from the signed-in user.
+    const u = pmAuth.user();
+    if (u) {
+      document.getElementById('acctName').value  = u.name  || '';
+      document.getElementById('acctPhone').value = u.phone || '';
+      document.getElementById('acctRole').value  = (u.role || 'admin').replace(/^./, c => c.toUpperCase());
+    }
+
+    // Persist settings in localStorage. Backend write-through can come later.
+    const SETTINGS_KEY = 'pm_admin_settings_v1';
+
+    function readForm() {
+      return {
+        branding: {
+          logoSrc:   document.getElementById('logoSrc').value.trim(),
+          brandText: document.getElementById('brandText').value.trim() || 'PM',
+          wordmark1: document.getElementById('wordmark1').value.trim(),
+          wordmark2: document.getElementById('wordmark2').value.trim(),
+          colorNavy: document.getElementById('colorNavy').value,
+          colorGold: document.getElementById('colorGold').value,
+          kente:     document.getElementById('kenteToggle').checked
+        },
+        account: {
+          name:   document.getElementById('acctName').value,
+          phone:  document.getElementById('acctPhone').value,
+          region: document.getElementById('acctRegion').value
+        },
+        business: {
+          name:    document.getElementById('bizName').value,
+          email:   document.getElementById('bizEmail').value,
+          phone:   document.getElementById('bizPhone').value,
+          address: document.getElementById('bizAddress').value,
+          hours:   document.getElementById('bizHours').value
+        },
+        pricing: {
+          feePct:    parseFloat(document.getElementById('feePct').value) || 10,
+          matPerSqm: parseFloat(document.getElementById('matPerSqm').value) || 45,
+          refundHrs: parseInt(document.getElementById('refundHrs').value) || 48
+        },
+        notifications: {
+          sms:   document.getElementById('notifSms').checked,
+          email: document.getElementById('notifEmail').checked,
+          wa:    document.getElementById('notifWa').checked
+        }
+      };
+    }
+
+    function applyToForm(s) {
+      if (!s) return;
+      const set = (id, v) => { const el = document.getElementById(id); if (el && v !== undefined && v !== null) el[el.type === 'checkbox' ? 'checked' : 'value'] = v; };
+      if (s.branding) {
+        set('logoSrc',   s.branding.logoSrc);
+        set('brandText', s.branding.brandText);
+        set('wordmark1', s.branding.wordmark1);
+        set('wordmark2', s.branding.wordmark2);
+        set('colorNavy', s.branding.colorNavy);
+        set('colorGold', s.branding.colorGold);
+        set('kenteToggle', s.branding.kente);
+      }
+      if (s.account) {
+        // Re-hydrate the Your-profile fields on page reload so an earlier
+        // saved edit still shows. The role field is read-only and reflects
+        // the live pmAuth user.
+        set('acctName',   s.account.name);
+        set('acctPhone',  s.account.phone);
+        set('acctRegion', s.account.region);
+      }
+      if (s.business) {
+        set('bizName', s.business.name); set('bizEmail', s.business.email);
+        set('bizPhone', s.business.phone); set('bizAddress', s.business.address);
+        set('bizHours', s.business.hours);
+      }
+      if (s.pricing) {
+        set('feePct', s.pricing.feePct); set('matPerSqm', s.pricing.matPerSqm);
+        set('refundHrs', s.pricing.refundHrs);
+      }
+      if (s.notifications) {
+        set('notifSms', s.notifications.sms);
+        set('notifEmail', s.notifications.email);
+        set('notifWa',  s.notifications.wa);
+      }
+      // Recompute payout %
+      const fee = parseFloat(document.getElementById('feePct').value) || 10;
+      document.getElementById('payoutPct').value = (100 - fee).toFixed(1) + '%';
+    }
+
+    function loadSaved() {
+      try { return JSON.parse(localStorage.getItem(SETTINGS_KEY) || 'null'); }
+      catch (e) { return null; }
+    }
+    applyToForm(loadSaved());
+
+    document.getElementById('feePct').addEventListener('input', e => {
+      const fee = parseFloat(e.target.value) || 0;
+      document.getElementById('payoutPct').value = (100 - fee).toFixed(1) + '%';
+    });
+
+    // ─────────────────────────────────────────────
+    // Account fields auto-save + live-preview the sidebar role card.
+    //
+    // The big "Save changes" button still saves the whole settings blob
+    // (branding / business / pricing / notifications). But Your-profile
+    // fields (name / phone / region) update the sidebar as the dispatcher
+    // types and persist to pmAuth on blur, so they don't have to scroll
+    // up and hit Save just to change their own display name.
+    //
+    // Pattern: input → live preview the role card from form values (no
+    // persistence). blur → write through to pmAuth + SETTINGS_KEY, then
+    // show a small "Saved" chip that fades after 1.4s.
+    // ─────────────────────────────────────────────
+    (function wireAccountAutoSave() {
+      const fields = ['acctName', 'acctPhone', 'acctRegion'];
+      // The "Saved" chip — injected once next to the section heading so the
+      // dispatcher gets a tiny visual confirmation that the auto-save fired.
+      const heading = document.querySelector('#pane-account .panel-head h3');
+      let chip = null;
+      if (heading && !document.getElementById('acctSavedChip')) {
+        chip = document.createElement('span');
+        chip.id = 'acctSavedChip';
+        chip.style.cssText = 'margin-left:10px;font-size:0.74rem;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:var(--green);background:rgba(30,127,79,0.10);padding:3px 9px;border-radius:999px;opacity:0;transition:opacity 0.18s;';
+        chip.textContent = '✓ Saved';
+        heading.appendChild(chip);
+      } else {
+        chip = document.getElementById('acctSavedChip');
+      }
+      let chipTimer = null;
+      function flashSaved() {
+        if (!chip) return;
+        chip.style.opacity = '1';
+        clearTimeout(chipTimer);
+        chipTimer = setTimeout(() => { chip.style.opacity = '0'; }, 1400);
+      }
+
+      // Live preview — paints the sidebar role card from the in-progress
+      // form values WITHOUT persisting. Lets the dispatcher see the change
+      // before they commit it (and reverts cleanly if they hit Cancel).
+      function previewSidebar() {
+        const name   = document.getElementById('acctName').value.trim();
+        const region = document.getElementById('acctRegion').value.trim();
+        const nameEl = document.getElementById('admin-user-name');
+        const roleEl = document.getElementById('admin-user-role');
+        const av     = document.getElementById('admin-avatar');
+        const u = (typeof pmAuth !== 'undefined') ? pmAuth.user() : null;
+        if (nameEl) nameEl.textContent = name || (u && u.name) || 'Admin';
+        if (av) {
+          const initials = (name || (u && u.name) || 'AD').split(/\s+/).map(s => s[0]).slice(0, 2).join('').toUpperCase();
+          av.textContent = initials;
+        }
+        if (roleEl) {
+          const cap   = s => (s || '').replace(/^./, c => c.toUpperCase());
+          const title = (u && u.title) || cap((u && u.role) || 'admin');
+          const where = region || (u && u.region) || 'Paint Masters';
+          roleEl.textContent = `${title} · ${where}`;
+        }
+      }
+
+      // Persist — on blur, writes through to pmAuth + SETTINGS_KEY in the
+      // same shape saveSettings() uses. Idempotent: if nothing changed, the
+      // function exits early.
+      function persistAccount() {
+        const name   = document.getElementById('acctName').value.trim();
+        const phone  = document.getElementById('acctPhone').value.trim();
+        const region = document.getElementById('acctRegion').value.trim();
+        // Update the saved settings blob too, so a fresh page load sees the
+        // edit on next applyToForm(). Merge — don't clobber other sections.
+        let cur = {};
+        try { cur = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}'); } catch (e) {}
+        cur.account = { name, phone, region };
+        try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(cur)); } catch (e) {}
+
+        if (typeof pmAuth !== 'undefined') {
+          const u = pmAuth.user();
+          if (u) {
+            // Skip if nothing actually changed.
+            const noop = (u.name || '') === name && (u.phone || '') === phone && (u.region || '') === region;
+            if (!noop) {
+              const updated = Object.assign({}, u, { name, phone, region, _fromSeed: false });
+              pmAuth.set({ token: pmAuth.token() || ('demo.' + Date.now()), user: updated });
+              if (typeof renderAdminRoleCard === 'function') renderAdminRoleCard();
+              flashSaved();
+            }
+          }
+        }
+      }
+
+      fields.forEach(id => {
+        const el = document.getElementById(id); if (!el) return;
+        el.addEventListener('input', previewSidebar);
+        el.addEventListener('blur',  persistAccount);
+        // Pressing Enter in any of the fields commits + blurs.
+        el.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); el.blur(); } });
+      });
+    })();
+
+    function saveSettings() {
+      const s = readForm();
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
+
+      // Write the Your-profile edits through to pmAuth so the sidebar role
+      // card (and every other place that reads pmAuth.user()) sees the new
+      // values immediately. Best-effort POST to the backend when it ships.
+      if (s.account && typeof pmAuth !== 'undefined') {
+        const cur = pmAuth.user();
+        if (cur) {
+          const updated = Object.assign({}, cur, {
+            name:   (s.account.name   || cur.name   || '').trim(),
+            phone:  (s.account.phone  || cur.phone  || '').trim(),
+            region: (s.account.region || cur.region || '').trim(),
+            // Mark as edited so the demo-seed self-heal in renderAdminRoleCard
+            // doesn't revert this change on the next page load.
+            _fromSeed: false,
+          });
+          pmAuth.set({ token: pmAuth.token() || ('demo.' + Date.now()), user: updated });
+          // Repaint the sidebar role card now (no page reload required).
+          if (typeof renderAdminRoleCard === 'function') renderAdminRoleCard();
+          // Best-effort POST through to the backend when /api/auth/me is live.
+          try {
+            fetch('/api/auth/me', {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (pmAuth.token() || '') },
+              body: JSON.stringify({ name: updated.name, phone: updated.phone, region: updated.region })
+            }).catch(() => { /* offline — local change still applied */ });
+          } catch (e) { /* silent */ }
+        }
+      }
+
+      // Update the brand-mark preview right away.
+      const img = document.querySelector('#logoPreviewMark img');
+      if (img) img.src = '../' + s.branding.logoSrc;
+      // Apply colors live (via CSS custom properties on :root).
+      document.documentElement.style.setProperty('--brand-mark-bg', s.branding.colorNavy);
+      toast('Settings saved.');
+    }
+
+    // Kente stripe lives on the customer site (PM_NAV). The admin shell
+    // doesn't render one, so flipping this toggle just persists the
+    // preference; shared.js applies it on every customer page mount.
+    // We still write it eagerly on `change` so admins don't need to hit
+    // "Save" before the customer site reflects the change.
+    document.getElementById('kenteToggle').addEventListener('change', () => {
+      const cur = loadSaved() || {};
+      cur.branding = cur.branding || {};
+      cur.branding.kente = document.getElementById('kenteToggle').checked;
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(cur));
+      toast(cur.branding.kente ? 'Kente stripe shown on customer site.' : 'Kente stripe hidden on customer site.');
+    });
+
+    function resetSettings() {
+      if (!confirm('Reset all settings to defaults?')) return;
+      localStorage.removeItem(SETTINGS_KEY);
+      location.reload();
+    }
+
+    async function changePassword() {
+      const cur = document.getElementById('curPwd').value;
+      const nw  = document.getElementById('newPwd').value;
+      if (!cur || !nw) { toast('Enter both fields.', 'warn'); return; }
+      if (nw.length < 6) { toast('New password must be at least 6 characters.', 'warn'); return; }
+      // Backend route exists at PUT /api/auth/password — try it, fall back to demo.
+      try {
+        const r = await fetch('/api/auth/password', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (pmAuth.token() || '') },
+          body: JSON.stringify({ currentPassword: cur, newPassword: nw })
+        });
+        if (r.ok) { toast('Password updated.'); document.getElementById('curPwd').value = ''; document.getElementById('newPwd').value = ''; return; }
+        const data = await r.json().catch(() => ({}));
+        toast(data.message || 'Could not change password.', 'warn');
+      } catch (e) {
+        toast('Demo mode — password change not persisted.');
+        document.getElementById('curPwd').value = '';
+        document.getElementById('newPwd').value = '';
+      }
+    }
+
+    // ─────────────────────────────────────────────
+    // Email setup — saved to its own localStorage key (so the SETTINGS_KEY
+    // blob doesn't grow with secrets) and best-effort PATCH to the backend
+    // when /api/admin/email-config ships. Fields show/hide based on the
+    // chosen provider so the form stays focused.
+    // ─────────────────────────────────────────────
+    const EMAIL_KEY = 'pm_email_config_v1';
+    function loadEmailConfig() {
+      try { return JSON.parse(localStorage.getItem(EMAIL_KEY) || '{}'); } catch (e) { return {}; }
+    }
+    function saveEmailConfigToStore(cfg) { try { localStorage.setItem(EMAIL_KEY, JSON.stringify(cfg)); } catch (e) {} }
+
+    function applyEmailFieldsVisibility() {
+      const provider = document.getElementById('emailProvider').value;
+      const smtp = document.getElementById('emailSmtpFields');
+      const api  = document.getElementById('emailApiKeyField');
+      if (smtp) smtp.style.display = provider === 'smtp' ? '' : 'none';
+      if (api)  api.style.display  = (provider && provider !== 'smtp') ? '' : 'none';
+    }
+    function hydrateEmailForm() {
+      const cfg = loadEmailConfig();
+      document.getElementById('emailProvider').value = cfg.provider || '';
+      document.getElementById('emailSmtpHost').value = cfg.smtpHost || '';
+      document.getElementById('emailSmtpPort').value = cfg.smtpPort || '';
+      document.getElementById('emailSmtpUser').value = cfg.smtpUser || '';
+      document.getElementById('emailSmtpPass').value = cfg.smtpPass || '';
+      document.getElementById('emailApiKey').value   = cfg.apiKey   || '';
+      document.getElementById('emailFrom').value     = cfg.from     || '';
+      document.getElementById('emailReplyTo').value  = cfg.replyTo  || '';
+      document.getElementById('emailAutoBooking').checked = cfg.autoBooking !== false;
+      applyEmailFieldsVisibility();
+      // Status badge in the panel head.
+      const status = document.getElementById('emailStatus');
+      if (status) {
+        const ok = !!(cfg.provider && cfg.from && (cfg.provider === 'smtp' ? cfg.smtpHost : cfg.apiKey));
+        status.textContent  = ok ? `✓ ${cfg.provider} · sends from ${cfg.from}` : 'Not configured';
+        status.style.color  = ok ? 'var(--green)' : 'var(--ink-500)';
+        status.style.fontWeight = ok ? '700' : '500';
+      }
+    }
+    document.getElementById('emailProvider').addEventListener('change', applyEmailFieldsVisibility);
+
+    function readEmailForm() {
+      return {
+        provider:    document.getElementById('emailProvider').value,
+        smtpHost:    document.getElementById('emailSmtpHost').value.trim(),
+        smtpPort:    parseInt(document.getElementById('emailSmtpPort').value, 10) || null,
+        smtpUser:    document.getElementById('emailSmtpUser').value.trim(),
+        smtpPass:    document.getElementById('emailSmtpPass').value,
+        apiKey:      document.getElementById('emailApiKey').value.trim(),
+        from:        document.getElementById('emailFrom').value.trim(),
+        replyTo:     document.getElementById('emailReplyTo').value.trim(),
+        autoBooking: document.getElementById('emailAutoBooking').checked,
+      };
+    }
+
+    function saveEmailConfig() {
+      const cfg = readEmailForm();
+      if (!cfg.provider) { toast('Pick a provider first.', 'warn'); return; }
+      if (!cfg.from) { toast('From address is required.', 'warn'); return; }
+      if (cfg.provider === 'smtp') {
+        if (!cfg.smtpHost || !cfg.smtpUser || !cfg.smtpPass) { toast('SMTP host, username and password are all required.', 'warn'); return; }
+      } else {
+        if (!cfg.apiKey) { toast('API key is required for ' + cfg.provider + '.', 'warn'); return; }
+      }
+      saveEmailConfigToStore(cfg);
+      // Best-effort PATCH so the backend gets the new config when the route ships.
+      try {
+        fetch('/api/admin/email-config', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (pmAuth.token() || '') },
+          body: JSON.stringify(cfg)
+        }).catch(() => {});
+      } catch (e) {}
+      if (typeof pmActivity !== 'undefined') {
+        pmActivity.emit({
+          kind: 'system', title: `Email setup saved (${cfg.provider})`,
+          sub: `Sends from ${cfg.from}`,
+          source: { role: 'admin', name: (typeof pmAuth !== 'undefined' && pmAuth.user()?.name) || 'Admin' }
+        });
+      }
+      toast('Email setup saved.');
+      hydrateEmailForm();
+    }
+
+    async function sendTestEmail() {
+      const cfg = readEmailForm();
+      if (!cfg.provider || !cfg.from) { toast('Save the setup first.', 'warn'); return; }
+      const to = document.getElementById('emailTestTo').value.trim();
+      if (!to) { toast('Enter a recipient address for the test.', 'warn'); return; }
+      // Best-effort POST through to the backend's email service.
+      try {
+        const r = await fetch('/api/admin/email-config/test', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (pmAuth.token() || '') },
+          body: JSON.stringify({ to })
+        });
+        if (r.ok) { toast(`Test sent to ${to}.`); return; }
+        toast(`Backend offline — config saved locally; test will fire when the route ships.`);
+      } catch (e) {
+        toast(`Backend offline — config saved locally; test will fire when the route ships.`);
+      }
+    }
+
+    hydrateEmailForm();
+
+    // ─────────────────────────────────────────────
+    // Settings → Data
+    //
+    // Catalogues every localStorage key the platform writes to, lets the
+    // admin wipe a selected subset (or everything), and provides the
+    // one-click production-reset path. Every key is documented so the
+    // dispatcher knows what they're throwing away.
+    //
+    // Keys NOT listed here are typed-prefix keys (e.g. pm_track_photos_<ref>)
+    // — for those we sweep everything matching pm_track_photos_ on wipe-all.
+    // ─────────────────────────────────────────────
+    const DATA_KEYS = [
+      { key: 'pm_admin_store_v1',     label: 'Admin store',          desc: 'Jobs, customers, artisans, inventory, activity log shown across the admin console.' },
+      { key: 'pm_activity_v1',        label: 'Activity bus',         desc: 'Cross-tab notification stream. Wiping clears the bell + Live activity feed.' },
+      { key: 'pm_support_tickets_v2', label: 'Support tickets',      desc: 'Tickets you submitted from Help & Support.' },
+      { key: 'pm_admin_settings_v1',  label: 'Admin settings',       desc: 'Branding, business, pricing, notifications. Reset to re-pull defaults.' },
+      { key: 'pm_hero_slides_v1',     label: 'Homepage hero slides', desc: 'The customer-site brand slider entries. Reset to re-show the seeded brands.' },
+      { key: 'pm_regions_v1',         label: 'Service regions',      desc: 'Region picker entries used across booking, register, team, and admin.' },
+      { key: 'pm_reviews_v1',         label: 'Customer reviews',     desc: 'Reviews left from track.html.' },
+      { key: 'pm_users_v1',           label: 'Local user accounts',  desc: 'Admin-invited painters / team members created in this browser.' },
+      { key: 'pm_auth_v1',            label: 'Current session',      desc: 'JWT + cached user. Wiping signs you out — you will need to log in again.' },
+      { key: 'pm_booking_v1',         label: 'Customer last booking',desc: 'The most recent booking the customer side wrote (drives the warranty cert lookup).' },
+      { key: 'pm_admin_inbox_v1',     label: 'Customer→admin inbox', desc: 'Pending bookings created on the customer site, waiting to drain into the admin store.' },
+      { key: 'pm_dash_range_v1',      label: 'Dashboard range pref', desc: 'Session preference for the revenue chart range (14/30/90d).', sessionStorage: true },
+      { key: 'pm_jobs_view_v1',       label: 'Jobs board prefs',     desc: 'Stage filter, hide-empty, compact, show-deleted toggles.', sessionStorage: true },
+    ];
+
+    function renderDataKeyList() {
+      const host = document.getElementById('dataKeyList'); if (!host) return;
+      host.innerHTML = DATA_KEYS.map(k => {
+        const store = k.sessionStorage ? sessionStorage : localStorage;
+        const present = store.getItem(k.key) !== null;
+        const size    = present ? new Blob([store.getItem(k.key) || '']).size : 0;
+        return `
+          <label style="display:grid;grid-template-columns:auto 1fr auto;gap:10px;padding:10px 12px;border:1px solid var(--ink-100);border-radius:10px;cursor:pointer;background:${present ? '#fff' : 'var(--ink-50)'};">
+            <input type="checkbox" class="dk-check" data-key="${k.key}" ${k.sessionStorage ? 'data-store="session"' : ''} ${present ? 'checked' : 'disabled'} />
+            <div>
+              <strong style="display:block;font-size:0.9rem;color:var(--navy-900);">${k.label} <code style="font-family:ui-monospace,monospace;font-size:0.78rem;font-weight:400;color:var(--ink-500);background:var(--ink-50);padding:1px 6px;border-radius:4px;">${k.key}</code>${k.sessionStorage ? '<span class="small" style="color:var(--ink-500);"> · session</span>' : ''}</strong>
+              <small style="color:var(--ink-500);">${k.desc}</small>
+            </div>
+            <div class="small" style="color:${present ? 'var(--ink-700)' : 'var(--ink-300)'};font-family:ui-monospace,monospace;text-align:right;align-self:center;">${present ? formatBytes(size) : 'empty'}</div>
+          </label>`;
+      }).join('');
+      // Refresh the production-mode badge + hint while we're at it.
+      const badge = document.getElementById('modeBadge');
+      const hint  = document.getElementById('modeHint');
+      const prod  = (typeof PM_IS_PRODUCTION !== 'undefined') && PM_IS_PRODUCTION;
+      if (badge) {
+        badge.textContent = prod ? '🟢 Production' : '🟡 Demo';
+        badge.style.color = prod ? 'var(--green)' : 'var(--orange)';
+        badge.style.fontWeight = '700';
+      }
+      if (hint) {
+        hint.innerHTML = prod
+          ? `You're in <strong>production</strong> mode. New stores hydrate empty. The local fallback login is disabled — only the real backend can sign someone in.`
+          : `You're in <strong>demo</strong> mode. To switch to production: edit each HTML head and change <code>&lt;meta name="pm-mode" content="demo"&gt;</code> to <code>content="production"</code>. The "Reset & switch" button below walks you through it.`;
+      }
+    }
+    function formatBytes(n) {
+      if (n < 1024) return n + ' B';
+      if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+      return (n / 1024 / 1024).toFixed(2) + ' MB';
+    }
+
+    function selectAllDataKeys(state) {
+      document.querySelectorAll('#dataKeyList .dk-check:not(:disabled)').forEach(c => { c.checked = !!state; });
+    }
+
+    function wipeSelectedKeys() {
+      const checks = [...document.querySelectorAll('#dataKeyList .dk-check:checked')];
+      if (!checks.length) { toast('Nothing selected.'); return; }
+      const labels = checks.map(c => DATA_KEYS.find(d => d.key === c.dataset.key)?.label || c.dataset.key);
+      if (!confirm(`Wipe ${checks.length} key${checks.length===1?'':'s'}?\n\n• ${labels.join('\n• ')}\n\nThis is local-only. Type "wipe" in the next prompt to confirm.`)) return;
+      const ans = prompt('Type "wipe" to confirm:');
+      if (String(ans || '').trim().toLowerCase() !== 'wipe') { toast('Cancelled.'); return; }
+      checks.forEach(c => {
+        const store = c.dataset.store === 'session' ? sessionStorage : localStorage;
+        try { store.removeItem(c.dataset.key); } catch (e) {}
+      });
+      // Also sweep typed-prefix keys (per-booking photo dumps).
+      const sweep = ['pm_track_photos_'];
+      Object.keys(localStorage).forEach(k => {
+        if (sweep.some(prefix => k.startsWith(prefix))) localStorage.removeItem(k);
+      });
+      toast(`Wiped ${checks.length} key${checks.length===1?'':'s'} + photo cache.`);
+      renderDataKeyList();
+      // If the auth key was wiped, the next page mount will redirect to login.
+      if (checks.some(c => c.dataset.key === 'pm_auth_v1')) {
+        setTimeout(() => location.replace('../login.html'), 600);
+      }
+    }
+
+    function confirmProductionReset() {
+      const msg = `RESET TO CLEAN PRODUCTION STATE\n\n` +
+                  `This will:\n` +
+                  `• Wipe every localStorage key on this device (admin store, activity bus, settings, sessions, customer bookings, painter demo data — everything).\n` +
+                  `• Sign you out.\n` +
+                  `• Show you the meta-tag flip needed to switch each HTML head from demo to production.\n\n` +
+                  `Type "reset production" to continue.`;
+      const ans = prompt(msg);
+      if (String(ans || '').trim().toLowerCase() !== 'reset production') { toast('Cancelled.'); return; }
+      // Wipe every PM key.
+      Object.keys(localStorage).filter(k => k.startsWith('pm_')).forEach(k => { try { localStorage.removeItem(k); } catch (e) {} });
+      Object.keys(sessionStorage).filter(k => k.startsWith('pm_')).forEach(k => { try { sessionStorage.removeItem(k); } catch (e) {} });
+      // Show the next-step instructions in a modal.
+      showProductionInstructions();
+    }
+
+    function showProductionInstructions() {
+      const host = document.body;
+      const back = document.createElement('div');
+      back.style.cssText = 'position:fixed;inset:0;background:rgba(11,31,58,0.6);z-index:2000;display:flex;align-items:center;justify-content:center;padding:16px;';
+      back.innerHTML = `
+        <div style="background:#fff;max-width:640px;width:100%;border-radius:14px;box-shadow:0 12px 32px rgba(11,31,58,0.18);max-height:calc(100vh - 32px);overflow:auto;">
+          <div style="padding:22px 26px;border-bottom:1px solid var(--ink-100);">
+            <h3 style="margin:0;color:var(--navy-900);">✓ Local data wiped — one step left</h3>
+            <p class="small" style="margin:6px 0 0;color:var(--ink-500);">To finish switching this deployment to production, edit each HTML file and flip the meta tag.</p>
+          </div>
+          <div style="padding:20px 26px;font-size:0.92rem;line-height:1.7;color:var(--ink-700);">
+            <strong style="color:var(--navy-900);">Add this to the &lt;head&gt; of every HTML page (or update the existing tag):</strong>
+            <pre style="background:var(--ink-50);padding:12px 14px;border-radius:8px;font-size:0.86rem;overflow:auto;border:1px solid var(--ink-100);font-family:ui-monospace,monospace;color:var(--navy-900);">&lt;meta name="pm-mode" content="production"&gt;</pre>
+            <p style="margin:14px 0 6px;">Pages to edit:</p>
+            <ul style="margin:0;padding-left:22px;">
+              <li>index.html, brand.html, paints.html, services.html, about.html, artisans.html</li>
+              <li>booking.html, quote.html, register.html, login.html, change-password.html</li>
+              <li>track.html, my.html, painter.html, warranty.html</li>
+              <li>admin/index.html, jobs.html, artisans.html, customers.html, inventory.html, analytics.html, approvals.html, support.html, team.html, settings.html</li>
+            </ul>
+            <p class="small" style="margin-top:14px;color:var(--ink-500);">Once flipped, every store hydrates empty. The local-fallback login is disabled — only your live backend can sign someone in. See <code>DEPLOYMENT.md</code> for the rest of the launch checklist.</p>
+          </div>
+          <div style="padding:16px 26px;border-top:1px solid var(--ink-100);display:flex;gap:8px;justify-content:flex-end;">
+            <button class="btn btn-outline" onclick="this.closest('div[style*=fixed]').remove();location.replace('../login.html');">Sign out & continue</button>
+          </div>
+        </div>`;
+      host.appendChild(back);
+    }
+
+    // First paint when the Data tab is active. We also re-render on tab
+    // change so the 'present?'/'empty' badges stay current after wipes.
+    renderDataKeyList();
+    document.querySelectorAll('.settings-tabs button').forEach(b => {
+      if (b.dataset.tab === 'data') b.addEventListener('click', () => setTimeout(renderDataKeyList, 30));
+    });
+
+    // ─────────────────────────────────────────────
+    // Hero brand slider editor
+    // Shares the localStorage key with index.html (`pm_hero_slides_v1`).
+    // Each row is editable in place; changes save on blur/input/click.
+    // Image upload resizes the file with a canvas before persisting as a
+    // data URL so we don't blow past the localStorage quota.
+    // ─────────────────────────────────────────────
+    const HERO_SLIDES_KEY = 'pm_hero_slides_v1';
+    const DEFAULT_HERO_SLIDES_ADMIN = [
+      { src: '../assets/img/brands/caparol.png', alt: 'Caparol',  caption: 'Caparol',  sub: 'European-grade durability we trust on premium interiors.', href: 'paints.html?brand=caparol' },
+      { src: '../assets/img/brands/coral.png',   alt: 'Coral',    caption: 'Coral',    sub: 'Hot-climate engineered for Ghanaian humidity.',          href: 'paints.html?brand=coral'   },
+      { src: '../assets/img/brands/leyland.png', alt: 'Leyland',  caption: 'Leyland',  sub: 'Trade-trusted finish — easy to clean, easy to live with.', href: 'paints.html?brand=leyland' },
+      { src: '../assets/img/brands/shield.png',  alt: 'Shield',   caption: 'Shield',   sub: 'Premium long-life coatings for façades and roofs.',      href: 'paints.html?brand=shield'  },
+      { src: '../assets/img/brands/azar.png',    alt: 'Azar',     caption: 'Azar',     sub: 'A local champion — fully tested in our QA program.',     href: 'paints.html?brand=azar'    }
+    ];
+
+    // Customer-side paths are root-relative (no "../"). Admin previews need
+    // "../" so the same image renders here. Strip/add "../" as needed.
+    function toCustomerPath(src) {
+      if (!src) return '';
+      if (src.startsWith('data:') || /^https?:\/\//.test(src)) return src;
+      return src.replace(/^\.\.\//, '');
+    }
+    function toAdminPreview(src) {
+      if (!src) return '';
+      if (src.startsWith('data:') || /^https?:\/\//.test(src)) return src;
+      // Already relative to root — admin sits one folder deeper.
+      return src.startsWith('../') ? src : '../' + src;
+    }
+
+    function loadSlides() {
+      try {
+        const raw = JSON.parse(localStorage.getItem(HERO_SLIDES_KEY) || 'null');
+        if (Array.isArray(raw) && raw.length) return raw;
+      } catch (e) {}
+      // First-load default — strip the "../" prefix so customer pages get clean root paths.
+      return DEFAULT_HERO_SLIDES_ADMIN.map(s => ({ ...s, src: toCustomerPath(s.src) }));
+    }
+
+    function saveSlides(list) {
+      try {
+        localStorage.setItem(HERO_SLIDES_KEY, JSON.stringify(list));
+        toast('Hero slider updated.');
+        return true;
+      } catch (e) {
+        toast('Storage full — try fewer or smaller photos.', 'warn');
+        return false;
+      }
+    }
+
+    function resetSlidesToDefaults() {
+      if (!confirm('Reset hero slider to the default brand line-up?')) return;
+      localStorage.removeItem(HERO_SLIDES_KEY);
+      renderSlideEditor();
+      toast('Hero slider reset to defaults.');
+    }
+
+    // Resize a File to a JPEG data URL with a max edge of `maxEdge`.
+    function shrinkImage(file, maxEdge = 1200, quality = 0.82) {
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        const reader = new FileReader();
+        reader.onload  = () => { img.src = reader.result; };
+        reader.onerror = () => reject(new Error('Could not read file.'));
+        img.onload  = () => {
+          let { width: w, height: h } = img;
+          const scale = Math.min(1, maxEdge / Math.max(w, h));
+          w = Math.round(w * scale); h = Math.round(h * scale);
+          const c = document.createElement('canvas');
+          c.width = w; c.height = h;
+          c.getContext('2d').drawImage(img, 0, 0, w, h);
+          resolve(c.toDataURL('image/jpeg', quality));
+        };
+        img.onerror = () => reject(new Error('Could not decode image.'));
+        reader.readAsDataURL(file);
+      });
+    }
+
+    function renderSlideEditor() {
+      const host = document.getElementById('slideEditor');
+      const slides = loadSlides();
+      if (!slides.length) {
+        host.innerHTML = `<div style="padding:18px;color:var(--ink-500);text-align:center;border:1px dashed var(--ink-300);border-radius:10px;">
+          No slides yet — add one below to populate the homepage hero.
+        </div>`;
+        return;
+      }
+      host.innerHTML = slides.map((s, i) => `
+        <div class="slide-row" data-i="${i}">
+          <div class="thumb">
+            ${s.src
+              ? `<img src="${toAdminPreview(s.src)}" alt="${(s.alt || s.caption || '').replace(/"/g,'&quot;')}"
+                       onerror="this.replaceWith(Object.assign(document.createElement('span'),{textContent:${JSON.stringify(s.caption || s.alt || 'Slide')}}))" />`
+              : `<span>${s.caption || 'Slide ' + (i + 1)}</span>`}
+          </div>
+          <div class="fields">
+            <input type="text" data-field="caption" value="${(s.caption || '').replace(/"/g,'&quot;')}" placeholder="Brand name (e.g. Caparol)" />
+            <input type="text" data-field="sub"     value="${(s.sub     || '').replace(/"/g,'&quot;')}" placeholder="Tagline shown under the brand name" />
+            <div class="pair">
+              <input type="text" data-field="src"  value="${(s.src     || '').replace(/"/g,'&quot;')}" placeholder="Image path or URL" />
+              <input type="text" data-field="href" value="${(s.href    || '').replace(/"/g,'&quot;')}" placeholder="Link (optional)" />
+            </div>
+            <div class="upload-line">
+              <button type="button" data-action="upload">⬆ Upload image</button>
+              <span>JPEG/PNG. Resized to 1200px before saving.</span>
+            </div>
+          </div>
+          <div class="controls">
+            <button type="button" data-action="up"   title="Move up">↑</button>
+            <button type="button" data-action="down" title="Move down">↓</button>
+            <button type="button" class="del" data-action="del" title="Remove">×</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // Delegate every interaction on the editor — input, click on
+    // up/down/del/upload — to the slide list, then re-render.
+    document.getElementById('slideEditor').addEventListener('input', (e) => {
+      const row = e.target.closest('.slide-row'); if (!row) return;
+      const i = Number(row.dataset.i);
+      const list = loadSlides();
+      if (!list[i]) return;
+      const field = e.target.dataset.field; if (!field) return;
+      list[i][field] = e.target.value;
+      // Keep alt synced to caption when alt is empty (a sensible accessibility default).
+      if (field === 'caption' && !list[i].alt) list[i].alt = e.target.value;
+      saveSlides(list);
+      // Refresh just the thumbnail if src changed.
+      if (field === 'src') {
+        const thumb = row.querySelector('.thumb');
+        thumb.innerHTML = list[i].src
+          ? `<img src="${toAdminPreview(list[i].src)}" alt="${(list[i].alt || list[i].caption || '').replace(/"/g,'&quot;')}"
+                 onerror="this.replaceWith(Object.assign(document.createElement('span'),{textContent:${JSON.stringify(list[i].caption || list[i].alt || 'Slide')}}))" />`
+          : `<span>${list[i].caption || 'Slide ' + (i + 1)}</span>`;
+      }
+    });
+
+    document.getElementById('slideEditor').addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-action]'); if (!btn) return;
+      const row = btn.closest('.slide-row'); if (!row) return;
+      const i = Number(row.dataset.i);
+      const list = loadSlides();
+      if (!list[i]) return;
+      const action = btn.dataset.action;
+      if (action === 'up'   && i > 0) { [list[i-1], list[i]] = [list[i], list[i-1]]; saveSlides(list); renderSlideEditor(); }
+      else if (action === 'down' && i < list.length - 1) { [list[i+1], list[i]] = [list[i], list[i+1]]; saveSlides(list); renderSlideEditor(); }
+      else if (action === 'del') {
+        if (!confirm('Remove this slide from the homepage hero?')) return;
+        list.splice(i, 1); saveSlides(list); renderSlideEditor();
+      }
+      else if (action === 'upload') {
+        const inp = document.getElementById('slideFileInput');
+        inp.dataset.targetIndex = String(i);
+        inp.click();
+      }
+    });
+
+    document.getElementById('slideFileInput').addEventListener('change', async (e) => {
+      const inp = e.target;
+      const i = Number(inp.dataset.targetIndex);
+      const file = inp.files && inp.files[0];
+      inp.value = ''; // allow re-selecting the same file
+      if (!file || isNaN(i)) return;
+      try {
+        const dataURL = await shrinkImage(file);
+        const list = loadSlides();
+        if (!list[i]) return;
+        list[i].src = dataURL;
+        if (saveSlides(list)) renderSlideEditor();
+      } catch (err) {
+        toast('Could not process that image.', 'warn');
+      }
+    });
+
+    document.getElementById('addSlideBtn').addEventListener('click', () => {
+      const list = loadSlides();
+      list.push({ src: '', caption: 'New brand', sub: '', href: '', alt: '' });
+      saveSlides(list);
+      renderSlideEditor();
+    });
+
+    renderSlideEditor();
+
+    // ─────────────────────────────────────────────
+    // Service regions editor — Settings → Business → Service regions.
+    // Reads/writes the same store every region picker on the site uses
+    // (pmRegions in shared.js → localStorage `pm_regions_v1`). Each row
+    // is one catchment area: name + optional travel surcharge in GHS.
+    // Storage event in shared.js refreshes any open region <select>s
+    // when this saves.
+    // ─────────────────────────────────────────────
+    function renderRegionEditor() {
+      const host = document.getElementById('regionEditor');
+      const list = pmRegions.list();
+      if (!list.length) {
+        host.innerHTML = `<div style="padding:16px;text-align:center;color:var(--ink-500);
+          border:1px dashed var(--ink-300);border-radius:10px;">
+          No regions yet — add one below or reset to defaults.</div>`;
+        return;
+      }
+      host.innerHTML = list.map((r, i) => `
+        <div class="region-row" data-i="${i}">
+          <input type="text" data-field="name" value="${(r.name || '').replace(/"/g,'&quot;')}"
+                 placeholder="Region name (e.g. Ho)" />
+          <label class="surcharge">
+            Travel surcharge
+            <input type="number" data-field="surcharge" min="0" step="10"
+                   value="${Number(r.surcharge || 0)}" />
+            <span>GHS</span>
+          </label>
+          <div class="controls">
+            <button type="button" data-action="up"   title="Move up">↑</button>
+            <button type="button" data-action="down" title="Move down">↓</button>
+            <button type="button" class="del" data-action="del" title="Remove">×</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function saveRegionList(list) {
+      const ok = pmRegions.save(list);
+      if (ok) {
+        toast('Service regions updated.');
+        // Refresh dropdowns on this very page so the Account region picker
+        // and any other open select on settings.html stays in sync.
+        document.querySelectorAll('select[data-pm-regions]').forEach(sel => {
+          let opts = {};
+          try { opts = JSON.parse(sel.dataset.pmRegions || '{}'); } catch (e) {}
+          pmRegions.populate(sel, sel.value, opts);
+        });
+      } else {
+        toast('Could not save regions — storage error.', 'warn');
+      }
+      return ok;
+    }
+
+    function resetRegionsToDefaults() {
+      if (!confirm('Reset service regions to the default list (Accra, Tema, Kumasi, …)?')) return;
+      pmRegions.reset();
+      renderRegionEditor();
+      toast('Service regions reset to defaults.');
+      document.querySelectorAll('select[data-pm-regions]').forEach(sel => {
+        let opts = {};
+        try { opts = JSON.parse(sel.dataset.pmRegions || '{}'); } catch (e) {}
+        pmRegions.populate(sel, sel.value, opts);
+      });
+    }
+
+    document.getElementById('regionEditor').addEventListener('input', (e) => {
+      const row = e.target.closest('.region-row'); if (!row) return;
+      const i = Number(row.dataset.i);
+      const list = pmRegions.list().slice(); // copy so we don't mutate DEFAULTS
+      if (!list[i]) return;
+      const field = e.target.dataset.field; if (!field) return;
+      list[i][field] = field === 'surcharge'
+        ? Math.max(0, Number(e.target.value) || 0)
+        : e.target.value;
+      saveRegionList(list);
+    });
+
+    document.getElementById('regionEditor').addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-action]'); if (!btn) return;
+      const row = btn.closest('.region-row'); if (!row) return;
+      const i = Number(row.dataset.i);
+      const list = pmRegions.list().slice();
+      if (!list[i]) return;
+      const action = btn.dataset.action;
+      if (action === 'up'   && i > 0) {
+        [list[i-1], list[i]] = [list[i], list[i-1]];
+        if (saveRegionList(list)) renderRegionEditor();
+      } else if (action === 'down' && i < list.length - 1) {
+        [list[i+1], list[i]] = [list[i], list[i+1]];
+        if (saveRegionList(list)) renderRegionEditor();
+      } else if (action === 'del') {
+        if (list.length <= 1) { toast('At least one region must remain.', 'warn'); return; }
+        if (!confirm(`Remove “${list[i].name || 'this region'}” from the catchment area?`)) return;
+        list.splice(i, 1);
+        if (saveRegionList(list)) renderRegionEditor();
+      }
+    });
+
+    document.getElementById('addRegionBtn').addEventListener('click', () => {
+      const list = pmRegions.list().slice();
+      list.push({ name: 'New region', surcharge: 0 });
+      if (saveRegionList(list)) renderRegionEditor();
+    });
+
+    renderRegionEditor();
+  </script>
+</body>
+</html>
