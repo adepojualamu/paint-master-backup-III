@@ -6,8 +6,12 @@
 // this module so the quote a customer sees and the price they're charged
 // can never disagree.
 //
-// Inputs and outputs are pure JS objects — no DB, no req/res. That makes it
-// trivially testable.
+// The rates themselves are operator-owned: they come from the editable rate
+// card (services/rateCard.js → pricing_settings table), NOT from hardcoded
+// constants. calculateQuote takes an optional `rates` argument so it stays a
+// pure, trivially-testable function (pass a rate card in); when omitted it
+// lazily loads the live rate card. Validation bounds (area/days) remain in
+// config/constants.js.
 // ============================
 
 const C = require('../config/constants');
@@ -17,23 +21,34 @@ const { badRequest } = require('../utils/errors');
  * Calculate a quote.
  *
  * @param {object} input
- * @param {string} input.service          One of C.RATE_PER_SQM keys.
+ * @param {string} input.service          One of the rate card's service keys.
  * @param {number} input.area_sqm         Total square metres of the job.
  * @param {number} input.duration_days    Painter days needed.
  * @param {number} input.rate_per_day     The painter's day-rate (GHS).
  * @param {boolean} [input.materials_included]  Customer wants painter to supply paint.
+ * @param {object} [rates]                The rate card (see services/rateCard.getRateCard()).
+ *                                        Defaults to the live rate card when omitted.
  * @returns {object} breakdown + totals
  */
-function calculateQuote(input) {
+function calculateQuote(input, rates) {
+  // Lazy-load the live rate card if the caller didn't inject one. Lazy require
+  // avoids a load-time circular dependency (rateCard → db → ...).
+  if (!rates) rates = require('./rateCard').getRateCard();
+
   const service       = String(input.service || '');
   const area          = Number(input.area_sqm);
   const days          = Number(input.duration_days);
   const ratePerDay    = Number(input.rate_per_day);
-  const includeMats   = !!input.materials_included;
+  // Materials are always included now. The platform supplies paint + primer on
+  // every job (pricing reconciliation), so materials are no longer optional —
+  // the input flag is retained only so the stored record echoes it as true.
+  const includeMats   = true;
+
+  const ratePerSqm = rates.ratePerSqm || {};
 
   // ----- validation -----
-  if (!C.RATE_PER_SQM[service]) {
-    throw badRequest(`Unknown service: ${service}`, { allowed: Object.keys(C.RATE_PER_SQM) });
+  if (!(service in ratePerSqm)) {
+    throw badRequest(`Unknown service: ${service}`, { allowed: Object.keys(ratePerSqm) });
   }
   if (!Number.isFinite(area)  || area  < C.MIN_AREA_SQM || area  > C.MAX_AREA_SQM)
     throw badRequest(`area_sqm must be between ${C.MIN_AREA_SQM} and ${C.MAX_AREA_SQM}`);
@@ -43,32 +58,49 @@ function calculateQuote(input) {
     throw badRequest(`rate_per_day must be between ${C.MIN_RATE_PER_DAY} and ${C.MAX_RATE_PER_DAY}`);
 
   // ----- components -----
-  const labour    = round2(ratePerDay * days);
-  const sqmCharge = round2(area * C.RATE_PER_SQM[service]);
-  const materials = includeMats ? round2(area * C.MATERIALS_PER_SQM) : 0;
+  // The painter is compensated for two things — their time (day-rate × days)
+  // and the complexity of the surface (per-sqm × area). Both go into the
+  // painter's `labour` total, which is the base both the platform fee and
+  // the painter's payout are calculated against. Materials are pass-through:
+  // the customer reimburses the platform's paint cost and the platform pays
+  // the supplier. The platform takes no margin on materials and the painter
+  // sees none of that money. VAT is applied last, on the pre-tax total. See
+  // docs/business-logic.md.
+  const labour_day = round2(ratePerDay * days);
+  const labour_sqm = round2(area * ratePerSqm[service]);
+  const labour     = round2(labour_day + labour_sqm);
+  const materials  = includeMats ? round2(area * rates.materialsPerSqm) : 0;
 
-  // The painter is paid for time AND complexity (sqm-based service component).
-  // Materials are pass-through; we don't take fee on them.
-  const subtotal     = round2(labour + sqmCharge + materials);
-  const feeBase      = round2(labour + sqmCharge);
-  const platform_fee = round2(feeBase * C.PLATFORM_FEE_PCT);
-  const total        = round2(subtotal + platform_fee);
+  const subtotal     = round2(labour + materials);                 // labour + pass-through materials
+  const platform_fee = round2(labour * rates.platformFeePct);      // fee is on labour only
+  const total_ex_vat = round2(subtotal + platform_fee);            // pre-tax total
+  const vat          = round2(total_ex_vat * rates.vatPct);        // Ghana VAT on the pre-tax total
+  const total        = round2(total_ex_vat + vat);                 // VAT-inclusive amount the customer pays
 
   return {
     inputs: { service, area_sqm: area, duration_days: days, rate_per_day: ratePerDay, materials_included: includeMats },
     breakdown: {
-      labour,
-      service_charge: sqmCharge,
-      materials,
+      labour,                       // painter's compensation base
+      labour_day,                   // breakdown: time component
+      labour_sqm,                   // breakdown: surface-complexity component
+      materials,                    // pass-through, platform-supplied
       subtotal,
-      platform_fee,
-      total,
+      platform_fee,                 // = labour × platformFeePct
+      total_ex_vat,                 // subtotal + platform_fee
+      vat,                          // = total_ex_vat × vatPct
+      total,                        // VAT-inclusive
     },
     // Convenience top-level fields the route can store directly on bookings.
+    labour,
     subtotal,
     platform_fee,
+    total_ex_vat,
+    vat,
     total,
-    painter_payout: round2(total * C.PAINTER_PAYOUT_PCT),
+    // Forward-looking hint of the painter's payout. The authoritative payout
+    // happens in routes/bookings.js qa-approve and uses the persisted
+    // `labour` column from the booking row (not this hint).
+    painter_payout: round2(labour * rates.painterPayoutPct),
   };
 }
 

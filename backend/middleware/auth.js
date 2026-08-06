@@ -3,9 +3,12 @@
 // ============================
 
 const jwt = require('jsonwebtoken');
-require('dotenv').config();
+const config = require('../config');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'paintgh_dev_secret';
+// Pulled from typed config — which throws at boot if JWT_SECRET is unset.
+// We deliberately do NOT keep a hardcoded fallback: a missing/empty secret
+// would silently let anyone forge tokens.
+const JWT_SECRET = config.jwt.secret;
 
 /**
  * Protect routes — verifies JWT token from Authorization header.
@@ -75,6 +78,20 @@ function requireSubRole(...subRoles) {
       }
     }
     if (req.user.sub_role === 'super_admin') return next();
+    // Bootstrap: on a system that has no super_admin yet, treat any admin as
+    // one. This lets a fresh install (or a manually-created admin who never
+    // got a sub-role assigned) actually do dispatcher / QA / finance work
+    // instead of hitting 403s with no obvious recovery path. The instant
+    // someone earns an explicit super_admin sub-role, this bypass deactivates.
+    if (!req.user.sub_role) {
+      try {
+        const db = require('../db');
+        const hasSuper = db.prepare(
+          `SELECT 1 FROM users WHERE role = 'admin' AND sub_role = 'super_admin' LIMIT 1`
+        ).get();
+        if (!hasSuper) return next();
+      } catch (_) { /* fall through to the deny below */ }
+    }
     if (!subRoles.includes(req.user.sub_role)) {
       return res.status(403).json({
         success: false,

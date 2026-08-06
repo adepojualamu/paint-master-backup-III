@@ -11,10 +11,13 @@ const { daySpan } = require('../utils/dates');
  *
  * @returns {{ available: boolean, conflicts: Array<{ id: string, job_date: string, duration_days: number }> }}
  */
-function isPainterAvailable({ painterId, startDate, durationDays }) {
+function isPainterAvailable({ painterId, startDate, durationDays, excludeBookingId = null }) {
   const wantedDays = new Set(daySpan(startDate, durationDays));
   // Pull any non-cancelled bookings that could overlap. Cheap on small N; if the
   // painter ever has thousands of bookings we'd window this by date range.
+  // excludeBookingId drops the booking currently being (re)assigned from the
+  // check — otherwise a booking already attached to this painter (e.g. an
+  // auto-proposal awaiting approval) would count as a conflict with itself.
   const candidates = db.prepare(`
     SELECT id, job_date, duration_days
       FROM bookings
@@ -23,6 +26,7 @@ function isPainterAvailable({ painterId, startDate, durationDays }) {
   `).all(painterId);
 
   const conflicts = candidates.filter(b => {
+    if (excludeBookingId != null && b.id === excludeBookingId) return false;
     const span = daySpan(b.job_date, b.duration_days);
     return span.some(d => wantedDays.has(d));
   });

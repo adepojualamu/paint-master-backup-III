@@ -26,6 +26,32 @@ const SELECT_COLS = `id, name, type, brand, finish, coverage_m2_per_litre,
                      coats_recommended, price_per_litre, bucket_size_litres,
                      notes, active, created_at, updated_at`;
 
+// ----- reservations roll-up --------------------------------------------
+//
+// Inventory Manager view: per-product committed paint. Each row is one
+// paint_product joined to a SUM of its 'reserved' rows in paint_reservations.
+// Products with zero reservations still appear so the dashboard shows the
+// full catalog with a 0 column.
+//
+// MUST be declared before '/:id' below, otherwise express treats
+// 'reservations' as the :id parameter.
+router.get('/reservations', asyncHandler(async (req, res) => {
+  const rows = db.prepare(`
+    SELECT pp.id, pp.name, pp.type, pp.bucket_size_litres,
+           COALESCE(SUM(CASE WHEN pr.status = 'reserved' THEN pr.litres_reserved  END), 0) AS litres_reserved,
+           COALESCE(SUM(CASE WHEN pr.status = 'reserved' THEN pr.buckets_reserved END), 0) AS buckets_reserved,
+           COALESCE(SUM(CASE WHEN pr.status = 'reserved' THEN pr.cost_reserved    END), 0) AS cost_reserved,
+           COALESCE(SUM(CASE WHEN pr.status = 'consumed' THEN pr.litres_reserved  END), 0) AS litres_consumed,
+           COUNT(CASE WHEN pr.status = 'reserved' THEN 1 END) AS quotes_reserved
+      FROM paint_products pp
+      LEFT JOIN paint_reservations pr ON pr.paint_product_id = pp.id
+     WHERE pp.active = 1
+     GROUP BY pp.id
+     ORDER BY litres_reserved DESC, pp.name
+  `).all();
+  res.json({ success: true, reservations: rows });
+}));
+
 // ----- list -------------------------------------------------------------
 router.get('/', asyncHandler(async (req, res) => {
   const wantInactive = req.query.include_inactive === '1' || req.query.include_inactive === 'true';

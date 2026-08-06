@@ -17,10 +17,12 @@ const express  = require('express');
 const bcrypt   = require('bcryptjs');
 
 const db          = require('../db');
+const C           = require('../config/constants');
 const log         = require('../utils/logger');
 const asyncHandler = require('../middleware/asyncHandler');
-const { protect, restrictTo } = require('../middleware/auth');
-const { notFound, badRequest } = require('../utils/errors');
+const { protect, restrictTo, requireSubRole } = require('../middleware/auth');
+const { notFound, badRequest, forbidden } = require('../utils/errors');
+const sms          = require('../services/sms');
 
 const router = express.Router();
 
@@ -60,7 +62,7 @@ router.get('/',
     }
     const where = filters.length ? 'WHERE ' + filters.join(' AND ') : '';
     const rows = db.prepare(`
-      SELECT id, name, phone, email, role,
+      SELECT id, name, phone, email, role, sub_role,
              must_change_password, last_sign_in_at, password_changed_at,
              created_at, updated_at
         FROM users
@@ -80,7 +82,7 @@ router.get('/',
 router.get('/:id',
   asyncHandler(async (req, res) => {
     const row = db.prepare(`
-      SELECT id, name, phone, email, role,
+      SELECT id, name, phone, email, role, sub_role,
              must_change_password, last_sign_in_at, password_changed_at,
              created_at, updated_at
         FROM users WHERE id = ?
@@ -92,10 +94,15 @@ router.get('/:id',
 
 // ─────────────────────────────────────────────
 // POST /api/admin/users/:id/reset-password
-// Admin issues a fresh temporary password. Returns it ONCE in the response
-// (so the dispatcher can copy it / SMS it to the user). The temp pass is
-// hashed before storage; must_change_password flips to 1 so the user
-// rotates it on next sign-in.
+// Admin issues a fresh temporary password. The password is delivered to the
+// user via SMS — it is NEVER returned in the response body, so the
+// credential can't leak through proxy logs, response caches or screenshots.
+// The temp pass is hashed before storage; must_change_password flips to 1
+// so the user rotates it on next sign-in.
+//
+// In dev with no Hubtel credentials in .env, the SMS sender runs in
+// record-only mode and writes the message to sms_log with status='pending'
+// — the admin can read it from there until real SMS is wired up.
 // ─────────────────────────────────────────────
 router.post('/:id/reset-password',
   asyncHandler(async (req, res) => {
@@ -117,13 +124,38 @@ router.post('/:id/reset-password',
     `).run(hashed, req.params.id);
 
     log.info({ admin: req.user.id, target: row.id, name: row.name }, 'admin reset user password');
+
+    // Deliver the password via SMS. Fire-and-forget so the response stays
+    // snappy; if the send fails the admin can re-issue. The body is
+    // intentionally short so it fits in a single SMS segment.
+    let smsStatus = 'queued';
+    if (row.phone) {
+      try {
+        const firstName = row.name.split(' ')[0];
+        const r = await sms.send({
+          to:   row.phone,
+          body: `Paint Masters: temp password ${tempPwd}. Sign in and you'll be asked to set a permanent one.`,
+        });
+        smsStatus = r && r.sent ? 'sent' : (r && r.stub ? 'record-only' : 'sent');
+      } catch (e) {
+        smsStatus = 'failed';
+        log.warn({ err: e.message }, 'reset-password SMS dispatch failed');
+      }
+    } else {
+      smsStatus = 'no-phone';
+    }
+
     res.json({
       success: true,
-      message: `Temporary password issued for ${row.name}.`,
-      user_id: row.id,
-      // Returned ONCE so the dispatcher can hand it over. Don't log this.
-      temporary_password: tempPwd,
-      sms_template: `Hi ${row.name.split(' ')[0]} — your Paint Masters temporary password is ${tempPwd}. Sign in at paintmasters.gh and you'll be asked to set a permanent one.`,
+      message: smsStatus === 'sent'
+        ? `Temporary password sent to ${row.name} via SMS.`
+        : smsStatus === 'record-only'
+          ? `Temporary password queued for SMS delivery (record-only mode — see sms_log).`
+          : smsStatus === 'no-phone'
+            ? `Password reset, but ${row.name} has no phone on file — they'll need help via another channel.`
+            : `Temporary password reset, but SMS dispatch failed — please retry or contact the user directly.`,
+      user_id:    row.id,
+      sms_status: smsStatus,
     });
   })
 );
@@ -152,11 +184,77 @@ router.patch('/:id',
     db.prepare(`UPDATE users SET ${sets.join(', ')}, updated_at = datetime('now') WHERE id = ?`).run(...params);
 
     const updated = db.prepare(`
-      SELECT id, name, phone, email, role,
+      SELECT id, name, phone, email, role, sub_role,
              must_change_password, last_sign_in_at, password_changed_at, created_at, updated_at
         FROM users WHERE id = ?
     `).get(req.params.id);
     res.json({ success: true, user: safeUser(updated) });
+  })
+);
+
+// ─────────────────────────────────────────────
+// PUT /api/admin/users/:id/sub-role
+//
+// Super-admin only — the sub-role mechanism is the platform's permission
+// scoping. Customers + painters never have a sub_role; admins can be one
+// of: super_admin, dispatcher, qa, finance, inventory_manager.
+//
+// Pass `sub_role: null` (or an empty string) to clear a sub-role.
+//
+// Refuses to let a super-admin demote the only remaining super_admin —
+// that would lock everyone out of the role-assignment workflow.
+// ─────────────────────────────────────────────
+router.put('/:id/sub-role',
+  requireSubRole('super_admin'),
+  asyncHandler(async (req, res) => {
+    const target = db.prepare('SELECT id, name, role, sub_role FROM users WHERE id = ?').get(req.params.id);
+    if (!target) throw notFound('User not found.');
+    if (target.role !== 'admin') {
+      throw badRequest(`Sub-roles only apply to admin users. ${target.name} is a ${target.role}.`);
+    }
+
+    // Accept null, '', or undefined as "clear the sub-role".
+    let newSubRole = req.body && Object.prototype.hasOwnProperty.call(req.body, 'sub_role')
+      ? req.body.sub_role
+      : null;
+    if (newSubRole === '' || newSubRole === undefined) newSubRole = null;
+    if (newSubRole !== null && !C.ADMIN_SUB_ROLES.includes(newSubRole)) {
+      throw badRequest(
+        `Invalid sub-role "${newSubRole}". Allowed: ${C.ADMIN_SUB_ROLES.join(', ')} (or null to clear).`
+      );
+    }
+
+    // Refuse to demote the last super_admin — otherwise nobody can re-promote.
+    if (target.sub_role === 'super_admin' && newSubRole !== 'super_admin') {
+      const supersLeft = db.prepare(
+        "SELECT COUNT(*) AS n FROM users WHERE role = 'admin' AND sub_role = 'super_admin' AND id != ?"
+      ).get(target.id).n;
+      if (supersLeft === 0) {
+        throw forbidden('Cannot demote the only remaining super_admin. Promote someone else first.');
+      }
+    }
+
+    db.prepare(
+      "UPDATE users SET sub_role = ?, updated_at = datetime('now') WHERE id = ?"
+    ).run(newSubRole, req.params.id);
+
+    log.info(
+      { admin: req.user.id, target: target.id, name: target.name, from: target.sub_role, to: newSubRole },
+      'admin sub_role updated'
+    );
+
+    const updated = db.prepare(`
+      SELECT id, name, phone, email, role, sub_role,
+             must_change_password, last_sign_in_at, password_changed_at, created_at, updated_at
+        FROM users WHERE id = ?
+    `).get(req.params.id);
+    res.json({
+      success: true,
+      message: newSubRole
+        ? `${target.name} is now ${newSubRole.replace('_', ' ')}.`
+        : `${target.name}'s sub-role cleared.`,
+      user: safeUser(updated),
+    });
   })
 );
 
@@ -169,6 +267,7 @@ function safeUser(row) {
     phone: row.phone,
     email: row.email,
     role:  row.role,
+    sub_role: row.sub_role || null,
     must_change_password: !!row.must_change_password,
     last_sign_in_at:      row.last_sign_in_at,
     password_changed_at:  row.password_changed_at,

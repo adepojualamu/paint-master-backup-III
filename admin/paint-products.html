@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="en">
 <head>
+  <meta name="pm-mode" content="production">
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="icon" type="image/png" href="../assets/img/favicon.png" />
@@ -204,7 +205,20 @@
   <script>
     adminMount('paint-products');
 
-    const state = { all: [], q: '', type: '', inactive: false };
+    const state = { all: [], q: '', type: '', inactive: false, reservations: {} };
+
+    // Per-product committed-paint roll-up — keyed by product id for cheap
+    // lookup at render time. Silent failure leaves the column showing "—".
+    async function loadReservations() {
+      try {
+        const res = await fetch('/api/paint-products/reservations');
+        if (!res.ok) return;
+        const j = await res.json();
+        const map = {};
+        (j.reservations || []).forEach(r => { map[r.id] = r; });
+        state.reservations = map;
+      } catch (_) { /* leave previous */ }
+    }
 
     function authHeaders() {
       const t = (typeof pmAuth !== 'undefined' && pmAuth.token) ? pmAuth.token() : null;
@@ -232,9 +246,12 @@
       try {
         const params = new URLSearchParams();
         if (state.inactive) params.set('include_inactive', '1');
-        const res = await fetch('/api/paint-products?' + params.toString());
-        if (!res.ok) throw new Error('HTTP ' + res.status);
-        const j = await res.json();
+        const [catalogRes] = await Promise.all([
+          fetch('/api/paint-products?' + params.toString()),
+          loadReservations(),     // parallel — cheap, doesn't block paint listing
+        ]);
+        if (!catalogRes.ok) throw new Error('HTTP ' + catalogRes.status);
+        const j = await catalogRes.json();
         state.all = Array.isArray(j.products) ? j.products : [];
         ppRender();
       } catch (e) {
@@ -269,11 +286,18 @@
               <th class="num">Coats</th>
               <th class="num">Bucket</th>
               <th class="num">Price/L</th>
+              <th class="num" title="Litres committed across all confirmed quotes that haven't been completed yet">Committed</th>
               <th style="text-align:right;">Actions</th>
             </tr>
           </thead>
           <tbody>
-            ${filtered.map(p => `
+            ${filtered.map(p => {
+              const r = state.reservations[p.id];
+              const litres = r ? Number(r.litres_reserved) || 0 : 0;
+              const committedCell = litres > 0
+                ? `<strong>${litres.toFixed(2)} L</strong><div class="small" style="color:var(--ink-500);">${r.buckets_reserved} bucket${r.buckets_reserved === 1 ? '' : 's'} · ${r.quotes_reserved} quote${r.quotes_reserved === 1 ? '' : 's'}</div>`
+                : `<span style="color:var(--ink-500);">—</span>`;
+              return `
               <tr class="${p.active ? '' : 'inactive'}">
                 <td>
                   <strong>${esc(p.name)}</strong>
@@ -284,6 +308,7 @@
                 <td class="num">${p.coats_recommended}</td>
                 <td class="num">${p.bucket_size_litres} L</td>
                 <td class="num">${fmtGHS(p.price_per_litre)}</td>
+                <td class="num">${committedCell}</td>
                 <td>
                   <div class="pp-actions">
                     <button class="icon-btn" title="Edit" onclick="ppOpenEdit(${p.id})">✏️</button>
@@ -292,8 +317,8 @@
                       : `<button class="icon-btn" title="Re-activate" onclick="ppReactivate(${p.id})">↻</button>`}
                   </div>
                 </td>
-              </tr>
-            `).join('')}
+              </tr>`;
+            }).join('')}
           </tbody>
         </table>`;
     }

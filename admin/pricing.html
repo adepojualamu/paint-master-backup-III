@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta name="pm-mode" content="production">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" type="image/png" href="../assets/img/favicon.png" />
+  <title>Pricing — Paint Masters</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/admin.css" />
+  <style>
+    /* Pricing rate card editor. The values here ARE the live quote engine —
+       services/pricing.js reads them via the rate card. Edits take effect on
+       the next quote/preview immediately after saving. */
+    .pr-intro {
+      background:#fff; border:1px solid var(--ink-100); border-radius:var(--radius-lg);
+      padding:16px 18px; margin-bottom:18px; color:var(--ink-700); font-size:0.9rem; line-height:1.55;
+    }
+    .pr-intro strong { color: var(--navy-900); }
+    .pr-group {
+      background:#fff; border:1px solid var(--ink-100); border-radius:var(--radius-lg);
+      margin-bottom:16px; overflow:hidden;
+    }
+    .pr-group > h2 {
+      margin:0; padding:14px 18px; font-size:1rem; color:var(--navy-900);
+      border-bottom:1px solid var(--ink-100); background:var(--ink-050, #f7f8fa);
+    }
+    .pr-rows { padding:6px 18px 14px; }
+    .pr-row {
+      display:grid; grid-template-columns: 1.4fr 0.9fr; gap:14px; align-items:center;
+      padding:12px 0; border-bottom:1px solid var(--ink-100);
+    }
+    .pr-row:last-child { border-bottom:0; }
+    @media (max-width:620px){ .pr-row{ grid-template-columns:1fr; gap:6px; } }
+    .pr-row .pr-label { font-weight:600; color:var(--navy-900); font-size:0.92rem; }
+    .pr-row .pr-help  { font-size:0.78rem; color:var(--ink-500); margin-top:2px; }
+    .pr-input-wrap { display:flex; align-items:center; gap:8px; }
+    .pr-input-wrap .pre, .pr-input-wrap .post {
+      font-size:0.85rem; color:var(--ink-500); font-weight:600; white-space:nowrap;
+    }
+    .pr-input-wrap input {
+      width:100%; max-width:160px; padding:8px 10px; border:1px solid var(--ink-200,#d6dae1);
+      border-radius:10px; font-size:0.95rem; font-variant-numeric:tabular-nums;
+      text-align:right;
+    }
+    .pr-input-wrap input:focus { outline:none; border-color:var(--navy-700); }
+    .pr-input-wrap input.invalid { border-color:var(--red,#d7263d); background:#fff5f5; }
+    .pr-err { color:var(--red,#d7263d); font-size:0.76rem; margin-top:3px; min-height:0; }
+    .pr-savebar {
+      position:sticky; bottom:0; background:#fff; border:1px solid var(--ink-100);
+      border-radius:var(--radius-lg); padding:12px 18px; margin-top:18px;
+      display:flex; align-items:center; justify-content:space-between; gap:12px;
+      box-shadow:0 -6px 20px rgba(11,31,58,0.06);
+    }
+    .pr-savebar .status { font-size:0.85rem; color:var(--ink-500); }
+    .pr-savebar .status.dirty { color:var(--gold-700,#8b5a00); font-weight:600; }
+    .pr-loading, .pr-denied { padding:50px 20px; text-align:center; color:var(--ink-500); }
+    .pr-denied strong { display:block; color:var(--navy-900); font-size:1.1rem; margin-bottom:6px; }
+  </style>
+</head>
+<body>
+  <div class="admin-shell">
+    <div id="admin-sidebar"></div>
+    <div class="admin-main">
+      <div id="admin-topbar"></div>
+      <div class="main">
+
+        <div class="page-head">
+          <div>
+            <h1>Pricing</h1>
+            <div class="sub" style="color:var(--ink-500);">
+              The rate card behind every quote. Finance sub-role required to edit.
+            </div>
+          </div>
+          <div class="page-actions">
+            <button class="btn btn-outline" onclick="prLoad()">↺ Reload</button>
+          </div>
+        </div>
+
+        <div class="pr-intro">
+          These values are the <strong>single source of truth</strong> for what a job costs.
+          The quote calculator a customer sees and the price they're charged both read from here —
+          there is no separate hidden formula. A quote total is built as:
+          <strong>labour</strong> (day-rate × days + area × the service's per-m² rate)
+          + <strong>materials</strong> (area × the materials rate)
+          + <strong>platform fee</strong> (% of labour),
+          then <strong>VAT</strong> is added on top. Changes apply to new quotes the moment you save.
+        </div>
+
+        <div id="prBody">
+          <div class="pr-loading">Loading rate card…</div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <script src="../assets/shared.js"></script>
+  <script src="assets/admin-shared.js"></script>
+  <script>
+    adminMount('pricing');
+
+    const state = { settings: [], values: {}, original: {} };
+
+    function authHeaders(extra) {
+      const t = (typeof pmAuth !== 'undefined' && pmAuth.token) ? pmAuth.token() : null;
+      return Object.assign(t ? { 'Authorization': `Bearer ${t}` } : {}, extra || {});
+    }
+
+    const GROUP_TITLES = {
+      service_rates: 'Service labour rates',
+      economics:     'Platform economics & materials',
+      tax:           'Tax',
+    };
+
+    function fmtForType(type, v) {
+      // percent values are stored as fractions; show them as percentages.
+      if (type === 'percent') return +(Number(v) * 100).toFixed(4);
+      return Number(v);
+    }
+    function parseForType(type, raw) {
+      const n = Number(raw);
+      if (!Number.isFinite(n)) return NaN;
+      return type === 'percent' ? n / 100 : n;
+    }
+    function unitFor(type) {
+      if (type === 'percent') return { pre: '', post: '%' };
+      if (type === 'rate')    return { pre: 'GHS', post: '/m²' };
+      return { pre: 'GHS', post: '' };
+    }
+
+    async function prLoad() {
+      const body = document.getElementById('prBody');
+      body.innerHTML = '<div class="pr-loading">Loading rate card…</div>';
+      try {
+        const res = await fetch('/api/admin/pricing', { headers: authHeaders() });
+        if (res.status === 401 || res.status === 403) {
+          body.innerHTML = '<div class="pr-denied"><strong>Finance access required</strong>You need the finance (or super-admin) sub-role to view and edit pricing.</div>';
+          return;
+        }
+        const j = await res.json();
+        if (!res.ok || !j.success) throw new Error(j.message || `HTTP ${res.status}`);
+        state.settings = j.settings;
+        state.original = {};
+        state.settings.forEach(s => { state.original[s.key] = s.value; });
+        render();
+      } catch (e) {
+        body.innerHTML = `<div class="pr-denied"><strong>Couldn't load pricing</strong>${e.message}</div>`;
+      }
+    }
+
+    function render() {
+      const groups = {};
+      state.settings.forEach(s => { (groups[s.category] = groups[s.category] || []).push(s); });
+      let html = '';
+      for (const cat of Object.keys(GROUP_TITLES)) {
+        const items = groups[cat]; if (!items) continue;
+        html += `<div class="pr-group"><h2>${GROUP_TITLES[cat]}</h2><div class="pr-rows">`;
+        for (const s of items) {
+          const u = unitFor(s.type);
+          const shown = fmtForType(s.type, s.value);
+          html += `
+            <div class="pr-row">
+              <div>
+                <div class="pr-label">${s.label}</div>
+                <div class="pr-help">${s.help || ''}</div>
+              </div>
+              <div>
+                <div class="pr-input-wrap">
+                  ${u.pre ? `<span class="pre">${u.pre}</span>` : ''}
+                  <input type="number" step="any" data-key="${s.key}" data-type="${s.type}"
+                         value="${shown}" oninput="onEdit(this)" />
+                  ${u.post ? `<span class="post">${u.post}</span>` : ''}
+                </div>
+                <div class="pr-err" id="err-${s.key}"></div>
+              </div>
+            </div>`;
+        }
+        html += `</div></div>`;
+      }
+      html += `
+        <div class="pr-savebar">
+          <span class="status" id="prStatus">All changes saved.</span>
+          <div style="display:flex;gap:10px;">
+            <button class="btn btn-outline" onclick="prReset()" id="prResetBtn" disabled>Discard</button>
+            <button class="btn btn-gold" onclick="prSave()" id="prSaveBtn" disabled>Save changes</button>
+          </div>
+        </div>`;
+      document.getElementById('prBody').innerHTML = html;
+      refreshDirty();
+    }
+
+    function specFor(key) { return state.settings.find(s => s.key === key); }
+
+    function onEdit(input) {
+      const key = input.dataset.key, type = input.dataset.type;
+      const spec = specFor(key);
+      const val = parseForType(type, input.value);
+      const errEl = document.getElementById('err-' + key);
+      if (!Number.isFinite(val) || val < spec.min || val > spec.max) {
+        input.classList.add('invalid');
+        const lo = fmtForType(type, spec.min), hi = fmtForType(type, spec.max);
+        errEl.textContent = `Must be between ${lo} and ${hi}${type==='percent'?'%':''}.`;
+        state.values[key] = NaN;
+      } else {
+        input.classList.remove('invalid');
+        errEl.textContent = '';
+        state.values[key] = val;
+      }
+      refreshDirty();
+    }
+
+    // Which keys changed from their saved value (and are valid)?
+    function dirtyKeys() {
+      const out = {};
+      for (const k in state.values) {
+        const v = state.values[k];
+        if (Number.isFinite(v) && v !== state.original[k]) out[k] = v;
+      }
+      return out;
+    }
+    function hasInvalid() { return Object.values(state.values).some(v => Number.isNaN(v)); }
+
+    function refreshDirty() {
+      const changed = dirtyKeys();
+      const n = Object.keys(changed).length;
+      const invalid = hasInvalid();
+      const status = document.getElementById('prStatus');
+      const saveBtn = document.getElementById('prSaveBtn');
+      const resetBtn = document.getElementById('prResetBtn');
+      if (!status) return;
+      if (invalid) {
+        status.textContent = 'Fix the highlighted values before saving.';
+        status.className = 'status dirty';
+      } else if (n > 0) {
+        status.textContent = `${n} unsaved change${n>1?'s':''}.`;
+        status.className = 'status dirty';
+      } else {
+        status.textContent = 'All changes saved.';
+        status.className = 'status';
+      }
+      saveBtn.disabled = invalid || n === 0;
+      resetBtn.disabled = n === 0 && !invalid;
+    }
+
+    function prReset() { state.values = {}; render(); }
+
+    async function prSave() {
+      const changed = dirtyKeys();
+      if (Object.keys(changed).length === 0 || hasInvalid()) return;
+      const saveBtn = document.getElementById('prSaveBtn');
+      saveBtn.disabled = true;
+      try {
+        const res = await fetch('/api/admin/pricing', {
+          method: 'PUT',
+          headers: authHeaders({ 'Content-Type': 'application/json' }),
+          body: JSON.stringify({ settings: changed }),
+        });
+        const j = await res.json().catch(() => ({}));
+        if (!res.ok || !j.success) {
+          const detail = j.details && j.details.errors ? j.details.errors.join('; ') : (j.message || `HTTP ${res.status}`);
+          throw new Error(detail);
+        }
+        // Adopt the server's returned values as the new saved baseline.
+        (j.settings || []).forEach(s => {
+          state.original[s.key] = s.value;
+          const spec = specFor(s.key); if (spec) spec.value = s.value;
+        });
+        state.values = {};
+        render();
+        if (typeof pmToast === 'function') pmToast('Pricing updated. New quotes use it immediately.', 'success');
+      } catch (e) {
+        if (typeof pmToast === 'function') pmToast(e.message, 'error');
+        refreshDirty();
+      }
+    }
+
+    prLoad();
+  </script>
+</body>
+</html>

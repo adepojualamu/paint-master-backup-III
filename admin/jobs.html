@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="en">
 <head>
+  <meta name="pm-mode" content="production">
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="icon" type="image/png" href="../assets/img/favicon.png" />
@@ -22,34 +23,9 @@
     /* Stage chips row spacing */
     .chip-group .chip .count { font-size: 0.74rem; }
 
-    /* Per-card delete affordance. Only visible on hover so the kanban
-       stays clean at rest. Lives in the card's bottom-right so it
-       doesn't visually compete with the top-right tick checkbox. */
     .job-card { position: relative; }
-    .job-card .card-delete {
-      position: absolute;
-      bottom: 8px; right: 8px;
-      width: 26px; height: 26px;
-      border: 1px solid var(--ink-100);
-      background: #fff;
-      border-radius: 50%;
-      font-size: 0.86rem;
-      line-height: 1;
-      cursor: pointer;
-      opacity: 0;
-      transition: opacity 0.12s, background 0.12s, border-color 0.12s, color 0.12s, transform 0.08s;
-      display: grid;
-      place-items: center;
-      color: var(--ink-500);
-      z-index: 2;
-    }
-    .job-card:hover .card-delete { opacity: 1; }
-    .job-card .card-delete:hover {
-      background: var(--red);
-      border-color: var(--red);
-      color: #fff;
-      transform: scale(1.05);
-    }
+    /* Loading / empty board states */
+    .jb-state { padding: 28px; text-align: center; color: var(--ink-500); font-size: 0.92rem; }
   </style>
 </head>
 <body>
@@ -62,14 +38,26 @@
         <div class="page-head">
           <div>
             <h1>Job Board</h1>
-            <div class="sub">Tick the jobs you want to act on, then bulk-assign a master, advance stages, or dispatch from the action bar.</div>
+            <div class="sub">Live view of the bookings pipeline. Tick cards to bulk-assign a Paint Master, or open a card to assign or cancel.</div>
           </div>
           <div class="page-actions">
             <button class="btn btn-outline" onclick="selectAll()">☑ Select all</button>
             <button class="btn btn-outline" onclick="exportCSV()">⬇ Export CSV</button>
-            <button class="btn btn-primary" onclick="openNew()">＋ Add Job</button>
+            <button class="btn btn-primary" onclick="loadBoard()">↺ Refresh</button>
           </div>
         </div>
+
+        <!-- Offline / fallback banner — shown when the bookings API can't be
+             reached and the board is rendering the localStorage demo data. -->
+        <div id="jbBanner" style="display:none;align-items:center;gap:10px;background:#FEF3C7;border:1px solid #FCD34D;color:#92400E;border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:0.88rem;">
+          <span style="font-size:1rem;">⚠</span>
+          <span class="jb-banner-msg" style="flex:1;"></span>
+          <button class="btn btn-outline" style="padding:4px 10px;font-size:0.8rem;" onclick="loadBoard()">Retry</button>
+        </div>
+
+        <!-- Action-error alert — surfaces 401 / 403 / "Offline" so a click on
+             Assign or Cancel that didn't go through never looks silent. -->
+        <div id="jbActionAlert" style="display:none;align-items:center;gap:10px;background:#FEE2E2;border:1px solid #FCA5A5;color:#991B1B;border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:0.9rem;"></div>
 
         <!-- Filters -->
         <div class="filterbar">
@@ -98,14 +86,11 @@
           <label style="display:flex;align-items:center;gap:6px;font-size:0.86rem;color:var(--ink-700);cursor:pointer;">
             <input type="checkbox" id="compact" /> Compact cards
           </label>
-          <label style="display:flex;align-items:center;gap:6px;font-size:0.86rem;color:var(--ink-700);cursor:pointer;">
-            <input type="checkbox" id="showDeleted" /> Show deleted
-          </label>
         </div>
 
-        <!-- Kanban (tick-selectable cards). Drag-and-drop is gone; selection is
-             via the checkbox in the top-right of each card. Click anywhere
-             else on the card to open the detail modal. -->
+        <!-- Kanban. Columns are the real booking lifecycle statuses. Tick a
+             card's checkbox to select it for a bulk action; click the card
+             body to open the detail / assign modal. -->
         <div style="overflow-x:auto;">
           <div class="kanban" id="board"></div>
         </div>
@@ -121,11 +106,8 @@
     <select id="batchAssign" title="Assign Paint Master">
       <option value="">Assign master…</option>
     </select>
-    <select id="batchStage" title="Move to stage">
-      <option value="">Move to stage…</option>
-    </select>
-    <button class="gold" onclick="batchDispatch()">Dispatch →</button>
-    <button onclick="batchDelete()" style="background:#FEE2E2;color:#991B1B;border:1px solid #FCA5A5;padding:8px 14px;border-radius:8px;font-weight:600;cursor:pointer;font-size:0.86rem;">🗑 Delete</button>
+    <button class="gold" onclick="batchAssign()">Assign →</button>
+    <button onclick="batchCancel()" style="background:#FEE2E2;color:#991B1B;border:1px solid #FCA5A5;padding:8px 14px;border-radius:8px;font-weight:600;cursor:pointer;font-size:0.86rem;">Cancel</button>
     <button class="clear" onclick="clearSelection()">✕</button>
   </div>
 
@@ -135,44 +117,564 @@
   <script src="../assets/shared.js"></script>
   <script src="assets/admin-shared.js"></script>
   <script>
+    // ============================================================
+    // Job Board — live view of the bookings pipeline.
+    //
+    // Primary source is the backend: GET /api/bookings. Each booking is
+    // mapped onto a kanban card; the columns ARE the real booking lifecycle
+    // statuses, so there's no lossy stage mapping. The dispatcher can assign
+    // a Paint Master (PUT /:id/assign) and cancel a booking (PUT /:id/cancel)
+    // — the only two booking mutations the backend exposes to admins. The
+    // remaining transitions (painter confirm, mark-done, QA approve/reject)
+    // happen in the painter and QA workflows, so the board shows them
+    // read-only.
+    //
+    // If the API can't be reached (server down, or not signed in as an
+    // admin) the board falls back to the localStorage demo store so it still
+    // renders something — read-only, with a banner explaining why.
+    // ============================================================
     adminMount('jobs');
     pmRegions.populate(document.getElementById('jbCity'), '', { allLabel: 'All cities' });
 
-    // Restore declutter prefs from sessionStorage so navigating away and
-    // back doesn't reset the dispatcher's chosen view.
+    // ---- stage models ----------------------------------------------------
+    // API mode: columns are the booking statuses verbatim.
+    const API_STAGES = ['pending_assignment','pending','confirmed','in_progress','qa_pending','completed','cancelled'];
+    const API_STAGE_LABEL = {
+      pending_assignment: 'New · Unassigned',
+      pending:            'Painter Assigned',
+      confirmed:          'Confirmed',
+      in_progress:        'In Progress',
+      qa_pending:         'QA Pending',
+      completed:          'Completed',
+      cancelled:          'Cancelled',
+    };
+    // Fallback (demo) mode reuses STAGES / STAGE_LABEL from admin-shared.js.
+    // render() reads only these two — loadBoard() swaps them per mode.
+    let BOARD_STAGES      = API_STAGES;
+    let BOARD_STAGE_LABEL = API_STAGE_LABEL;
+
+    // ---- board state -----------------------------------------------------
+    let apiMode = false;
+    let board   = { jobs: [], artisans: [] };   // the active data source
+    const selected = new Set();                  // ticked job ids (as strings)
+
+    // Declutter prefs persist for the session so navigating away and back
+    // doesn't reset the dispatcher's chosen view.
     const SESS_KEY = 'pm_jobs_view_v1';
     const prefs = (() => { try { return JSON.parse(sessionStorage.getItem(SESS_KEY)) || {}; } catch (e) { return {}; } })();
     const filters = {
       search:'', service:'', artisan:'', city:'',
-      stage:    prefs.stage || '',          // '' = all stages
-      hideEmpty:    prefs.hideEmpty !== false,  // default true
-      compact:      !!prefs.compact,
-      showDeleted:  !!prefs.showDeleted,         // default false — hide soft-deletes
+      stage:     prefs.stage || '',
+      hideEmpty: prefs.hideEmpty !== false,   // default true
+      compact:   !!prefs.compact,
     };
     function savePrefs() {
-      try { sessionStorage.setItem(SESS_KEY, JSON.stringify({ stage: filters.stage, hideEmpty: filters.hideEmpty, compact: filters.compact, showDeleted: filters.showDeleted })); } catch (e) {}
+      try { sessionStorage.setItem(SESS_KEY, JSON.stringify({ stage: filters.stage, hideEmpty: filters.hideEmpty, compact: filters.compact })); } catch (e) {}
     }
-    let store = getStore();
-    // Set of currently-ticked job IDs (survives across re-renders).
-    const selected = new Set();
 
-    // Render the stage chips with per-stage counts. Click toggles the focus.
+    // ---- helpers ---------------------------------------------------------
+    function authHeaders() {
+      const t = (typeof pmAuth !== 'undefined' && pmAuth.token) ? pmAuth.token() : null;
+      return t ? { 'Authorization': `Bearer ${t}` } : {};
+    }
+    function esc(s) {
+      return String(s == null ? '' : s)
+        .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+        .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+    }
+    function money(n) {
+      try { if (typeof fmtGHS === 'function') return fmtGHS(n); } catch (e) {}
+      return 'GH₵' + Math.round(Number(n) || 0).toLocaleString();
+    }
+    function shortDate(iso) {
+      try { if (typeof fmtShort === 'function') return fmtShort(iso); } catch (e) {}
+      if (!iso) return '—';
+      try { return new Date(iso).toLocaleDateString('en-GB', { day:'2-digit', month:'short' }); }
+      catch (e) { return String(iso); }
+    }
+    function notify(msg, kind) {
+      if (typeof toast === 'function') toast(msg, kind);
+      else if (typeof pmToast === 'function') pmToast(msg, kind);
+    }
+    function initialsOf(name) {
+      const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+      if (!parts.length) return '—';
+      return (parts[0][0] + (parts[1] ? parts[1][0] : '')).toUpperCase();
+    }
+    const AVATAR_COLORS = ['#0B1F3A','#1B4D89','#C8102E','#2E5D3A','#B97A1F','#5C2A4C','#0072CE','#7A1C2C'];
+    function colorFor(id) {
+      const s = String(id == null ? '' : id);
+      let h = 0;
+      for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+      return AVATAR_COLORS[Math.abs(h) % AVATAR_COLORS.length];
+    }
+    // Loose id match — API painter ids are numbers, demo artisan ids strings.
+    function artisanById(id) {
+      if (id == null) return null;
+      return (board.artisans || []).find(a => String(a.id) === String(id)) || null;
+    }
+    function requireApi() {
+      if (!apiMode) {
+        showActionError(
+          'Offline — sign in as an admin (or restart the backend) to assign or cancel jobs.',
+          'Reload signed-in'
+        );
+        return false;
+      }
+      return true;
+    }
+
+    // Sticky red alert above the batch bar — used for "your action did not
+    // work and here is why". Survives until the dispatcher dismisses it or
+    // does something else, so a silent 403/401/offline can never be missed.
+    function showActionError(message, retryLabel) {
+      const host = document.getElementById('jbActionAlert');
+      if (!host) return;
+      host.innerHTML = `
+        <span style="font-size:1rem;">⚠</span>
+        <span style="flex:1;">${esc(message)}</span>
+        ${retryLabel ? `<button class="btn btn-outline" style="padding:4px 10px;font-size:0.8rem;" onclick="location.href='../login.html?next=admin/jobs.html'">${esc(retryLabel)}</button>` : ''}
+        <button class="btn btn-ghost" style="padding:4px 8px;font-size:0.95rem;line-height:1;" onclick="document.getElementById('jbActionAlert').style.display='none';" aria-label="Dismiss">×</button>
+      `;
+      host.style.display = 'flex';
+    }
+    function clearActionError() {
+      const host = document.getElementById('jbActionAlert');
+      if (host) host.style.display = 'none';
+    }
+
+    // ---- mappers ---------------------------------------------------------
+    // A backend booking → the kanban "job" shape render() expects.
+    function bookingToJob(b) {
+      let endDate = b.job_date;
+      try {
+        const d = new Date(b.job_date);
+        d.setDate(d.getDate() + Math.max(0, (b.duration_days || 1) - 1));
+        endDate = d.toISOString().slice(0, 10);
+      } catch (e) {}
+      return {
+        id:            b.id,
+        ref:           b.id,                       // bookings use their id as the ref
+        customer:      b.customer_name || '—',
+        service:       b.service || 'Painting',
+        area:          Number(b.area_sqm) || 0,
+        amount:        Number(b.total) || 0,
+        stage:         b.status,
+        assignedTo:    b.painter_id != null ? b.painter_id : null,
+        painterName:   b.painter_name || null,
+        date:          b.job_date,
+        endDate:       endDate,
+        durationDays:  b.duration_days || 1,
+        address:       b.address || '—',
+        paymentMethod: b.payment_method || null,
+        paymentStatus: b.payment_status || null,
+        quoteId:       b.quote_id || null,
+        notes:         b.notes || null,
+        createdAt:     b.created_at || null,
+      };
+    }
+    // A backend painter → the kanban "artisan" shape.
+    function painterToArtisan(p) {
+      return {
+        id:       p.id,
+        name:     p.name,
+        initials: initialsOf(p.name),
+        color:    colorFor(p.id),
+        region:   p.city || '—',
+        rating:   p.avg_rating != null ? Number(p.avg_rating) : null,
+        rate:     p.rate_per_day,
+      };
+    }
+
+    // ---- data load -------------------------------------------------------
+    // Fetch every page of bookings (admin sees all). Capped at 10 pages so a
+    // runaway dataset can't hang the board.
+    async function fetchAllBookings() {
+      const out = [];
+      for (let page = 1; page <= 10; page++) {
+        const res = await fetch(`/api/bookings?limit=100&page=${page}`, { headers: authHeaders() });
+        if (!res.ok) throw new Error('Bookings API: HTTP ' + res.status);
+        const j = await res.json();
+        const rows = Array.isArray(j.bookings) ? j.bookings : [];
+        out.push(...rows);
+        if (page >= (j.pages || 1)) break;
+      }
+      return out;
+    }
+
+    async function loadBoard() {
+      const boardEl = document.getElementById('board');
+      if (boardEl && !board.jobs.length) boardEl.innerHTML = '<div class="jb-state">Loading bookings…</div>';
+      const banner = document.getElementById('jbBanner');
+      try {
+        const [bookings, paintersRes] = await Promise.all([
+          fetchAllBookings(),
+          fetch('/api/painters?limit=200', { headers: authHeaders() }),
+        ]);
+        if (!paintersRes.ok) throw new Error('Painters API: HTTP ' + paintersRes.status);
+        const pj = await paintersRes.json();
+        apiMode = true;
+        BOARD_STAGES      = API_STAGES;
+        BOARD_STAGE_LABEL = API_STAGE_LABEL;
+        board = {
+          jobs:     bookings.map(bookingToJob),
+          artisans: (Array.isArray(pj.painters) ? pj.painters : []).map(painterToArtisan),
+        };
+        if (banner) banner.style.display = 'none';
+      } catch (e) {
+        // Graceful fallback — render the localStorage demo store, read-only.
+        apiMode = false;
+        BOARD_STAGES      = (typeof STAGES !== 'undefined') ? STAGES : API_STAGES;
+        BOARD_STAGE_LABEL = (typeof STAGE_LABEL !== 'undefined') ? STAGE_LABEL : API_STAGE_LABEL;
+        let demo = { jobs: [], artisans: [] };
+        try { demo = (typeof getStore === 'function') ? getStore() : demo; } catch (_) {}
+        board = {
+          jobs:     (demo.jobs || []).filter(j => !j.deleted_at),
+          artisans: demo.artisans || [],
+        };
+        if (banner) {
+          banner.style.display = 'flex';
+          const msg = banner.querySelector('.jb-banner-msg');
+          if (msg) msg.textContent =
+            'Offline — showing demo data. Couldn’t reach the bookings API (' + e.message +
+            '). Sign in as an admin with the server running to manage live bookings.';
+        }
+      }
+      selected.clear();
+      populateFilters();
+      render();
+    }
+
+    // Rebuild the service + master filter dropdowns for the active dataset.
+    // The city dropdown is a static region list populated once by pmRegions.
+    function populateFilters() {
+      const svcSel = document.getElementById('jbService');
+      const artSel = document.getElementById('jbArtisan');
+      if (svcSel) {
+        const services = [...new Set(board.jobs.map(j => j.service).filter(Boolean))].sort();
+        svcSel.innerHTML = '<option value="">All services</option>'
+          + services.map(s => `<option>${esc(s)}</option>`).join('');
+        svcSel.value = filters.service;
+      }
+      if (artSel) {
+        artSel.innerHTML = '<option value="">All Masters</option><option value="null">Unassigned</option>'
+          + board.artisans.map(a => `<option value="${esc(a.id)}">${esc(a.name)}</option>`).join('');
+        artSel.value = filters.artisan;
+      }
+    }
+
+    // ---- render ----------------------------------------------------------
     function renderStageChips() {
       const host = document.getElementById('stageChips'); if (!host) return;
-      const counts = STAGES.reduce((m, st) => { m[st] = store.jobs.filter(j => j.stage === st).length; return m; }, {});
-      const total = store.jobs.length;
+      const counts = BOARD_STAGES.reduce((m, st) => { m[st] = board.jobs.filter(j => j.stage === st).length; return m; }, {});
       const chip = (val, label, count) => {
         const active = filters.stage === val ? 'active' : '';
-        return `<button class="chip ${active}" data-stage="${val}">${label} <span class="count" style="opacity:.7;font-weight:500;margin-left:4px;">${count}</span></button>`;
+        return `<button class="chip ${active}" data-stage="${esc(val)}">${esc(label)} <span class="count" style="opacity:.7;font-weight:500;margin-left:4px;">${count}</span></button>`;
       };
-      host.innerHTML = chip('', 'All', total) + STAGES.map(st => chip(st, STAGE_LABEL[st], counts[st])).join('');
+      host.innerHTML = chip('', 'All', board.jobs.length)
+        + BOARD_STAGES.map(st => chip(st, BOARD_STAGE_LABEL[st] || st, counts[st])).join('');
       host.querySelectorAll('[data-stage]').forEach(b => b.addEventListener('click', () => {
         filters.stage = filters.stage === b.dataset.stage ? '' : b.dataset.stage;
         savePrefs(); render();
       }));
     }
 
-    // Sync the toggles to filters + state.
+    function filteredJobs() {
+      return board.jobs.filter(j => {
+        if (filters.search) {
+          const q = filters.search.toLowerCase();
+          const hay = `${j.ref} ${j.customer} ${j.service} ${j.address}`.toLowerCase();
+          if (!hay.includes(q)) return false;
+        }
+        if (filters.service && j.service !== filters.service) return false;
+        if (filters.artisan === 'null' && j.assignedTo) return false;
+        else if (filters.artisan && filters.artisan !== 'null' && String(j.assignedTo) !== String(filters.artisan)) return false;
+        if (filters.city && !String(j.address || '').includes(filters.city)) return false;
+        return true;
+      });
+    }
+
+    function masterAvatar(j) {
+      const a = artisanById(j.assignedTo);
+      if (a) {
+        return `<div class="avatar" style="width:24px;height:24px;background:${a.color};font-size:0.65rem;" title="Master: ${esc(a.name)}">${esc(a.initials)}</div>`;
+      }
+      if (j.painterName) {
+        return `<div class="avatar" style="width:24px;height:24px;background:${colorFor(j.assignedTo)};font-size:0.65rem;" title="Master: ${esc(j.painterName)}">${esc(initialsOf(j.painterName))}</div>`;
+      }
+      return '<span class="small" style="color:var(--ink-500);">No master</span>';
+    }
+
+    function renderCard(j) {
+      const isSel = selected.has(String(j.id));
+      return `
+        <div class="job-card ${isSel ? 'selected' : ''}" data-id="${esc(j.id)}">
+          <input type="checkbox" class="card-tick" data-id="${esc(j.id)}" ${isSel ? 'checked' : ''} aria-label="Select ${esc(j.ref)}" />
+          <div data-open="${esc(j.id)}" style="cursor:pointer;">
+            <div class="ref">${esc(j.ref)}</div>
+            <h4 style="padding-right:30px;">${esc(j.service)}</h4>
+            <div class="meta">${esc(j.customer)} · ${esc(shortDate(j.date))}</div>
+            <div class="foot">
+              ${masterAvatar(j)}
+              <span class="amt">${money(j.amount)}</span>
+            </div>
+          </div>
+        </div>`;
+    }
+
+    function render() {
+      const filtered = filteredJobs();
+      const countEl = document.getElementById('jbCount');
+      if (countEl) countEl.textContent = `${filtered.length} of ${board.jobs.length} ${apiMode ? 'bookings' : 'jobs'}`;
+
+      renderStageChips();
+
+      const stagesToShow = filters.stage
+        ? [filters.stage]
+        : BOARD_STAGES.filter(st => !filters.hideEmpty || filtered.some(j => j.stage === st));
+
+      const boardEl = document.getElementById('board');
+      boardEl.innerHTML = stagesToShow.map(stage => {
+        const col = filtered.filter(j => j.stage === stage);
+        const cards = col.map(renderCard).join('');
+        return `
+          <div class="kanban-col" data-stage="${esc(stage)}">
+            <div class="col-head"><span>${esc(BOARD_STAGE_LABEL[stage] || stage)}</span><span class="count">${col.length}</span></div>
+            ${cards || '<div class="small" style="text-align:center;padding:12px 0;color:var(--ink-500);">No jobs at this stage</div>'}
+          </div>`;
+      }).join('') || `<div class="jb-state">${board.jobs.length ? 'No jobs match the current filters.' : 'No bookings yet.'}</div>`;
+
+      bindCards();
+      refreshBatchBar();
+    }
+
+    function bindCards() {
+      document.querySelectorAll('.card-tick').forEach(cb => {
+        cb.addEventListener('click', e => e.stopPropagation());
+        cb.addEventListener('change', e => {
+          const id = String(e.target.dataset.id);
+          if (e.target.checked) selected.add(id); else selected.delete(id);
+          const card = e.target.closest('.job-card');
+          if (card) card.classList.toggle('selected', e.target.checked);
+          refreshBatchBar();
+        });
+      });
+      document.querySelectorAll('[data-open]').forEach(el => {
+        el.addEventListener('click', () => openJob(el.dataset.open));
+      });
+    }
+
+    // ---- batch action bar ------------------------------------------------
+    function refreshBatchBar() {
+      const bar = document.getElementById('batchBar');
+      const n = selected.size;
+      bar.classList.toggle('show', n > 0);
+      document.getElementById('batchCount').textContent = n === 1 ? '1 selected' : `${n} selected`;
+      const assignSel = document.getElementById('batchAssign');
+      assignSel.innerHTML = '<option value="">Assign master…</option>'
+        + board.artisans.map(a =>
+            `<option value="${esc(a.id)}">${esc(a.name)}${a.region ? ' · ' + esc(a.region) : ''}</option>`
+          ).join('');
+    }
+
+    function selectAll() {
+      const visible = [...document.querySelectorAll('.card-tick')];
+      const allSel = visible.length > 0 && visible.every(cb => cb.checked);
+      visible.forEach(cb => {
+        const id = String(cb.dataset.id);
+        if (allSel) selected.delete(id); else selected.add(id);
+      });
+      render();
+    }
+    function clearSelection() { selected.clear(); render(); }
+
+    // ---- backend mutations ----------------------------------------------
+    async function assignBooking(bookingId, painterId) {
+      const res = await fetch(`/api/bookings/${encodeURIComponent(bookingId)}/assign`, {
+        method:  'PUT',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body:    JSON.stringify({ painter_id: Number(painterId) }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error((j && j.message) || ('HTTP ' + res.status));
+      return j;
+    }
+    async function cancelBooking(bookingId) {
+      const res = await fetch(`/api/bookings/${encodeURIComponent(bookingId)}/cancel`, {
+        method:  'PUT',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error((j && j.message) || ('HTTP ' + res.status));
+      return j;
+    }
+
+    // Bulk-assign every ticked booking that is still unassigned. Bookings
+    // past pending_assignment can't be re-assigned through this endpoint, so
+    // they're reported as skipped rather than silently ignored.
+    async function batchAssign() {
+      if (!requireApi()) return;
+      const painterId = Number(document.getElementById('batchAssign').value);
+      if (!painterId) { showActionError('Pick a Paint Master from the dropdown first.'); return; }
+      const ids = [...selected];
+      if (!ids.length) return;
+      clearActionError();
+      let ok = 0, skipped = 0, failed = 0, lastErr = '';
+      for (const id of ids) {
+        const job = board.jobs.find(j => String(j.id) === id);
+        if (!job || job.stage !== 'pending_assignment') { skipped++; continue; }
+        try { await assignBooking(id, painterId); ok++; }
+        catch (e) { failed++; lastErr = e && e.message || 'unknown error'; }
+      }
+      if (ok)      notify(`${ok} booking${ok > 1 ? 's' : ''} assigned.`, 'success');
+      if (skipped) notify(`${skipped} skipped — only unassigned bookings can be assigned here.`, 'warn');
+      // Sticky banner so the dispatcher actually sees why the assign didn't
+      // go through (the most common cause is the admin lacking the
+      // `dispatcher` sub-role, which surfaces here as "Requires sub-role: …").
+      if (failed)  showActionError(`Assignment failed for ${failed} booking${failed > 1 ? 's' : ''}: ${lastErr}`);
+      await loadBoard();
+    }
+
+    async function batchCancel() {
+      if (!requireApi()) return;
+      const ids = [...selected];
+      if (!ids.length) return;
+      const cancellable = ids.filter(id => {
+        const j = board.jobs.find(x => String(x.id) === id);
+        return j && j.stage !== 'completed' && j.stage !== 'cancelled';
+      });
+      if (!cancellable.length) { showActionError('None of the selected bookings can be cancelled.'); return; }
+      if (!confirm(`Cancel ${cancellable.length} booking${cancellable.length > 1 ? 's' : ''}? Refunds follow the cancellation policy.`)) return;
+      clearActionError();
+      let ok = 0, failed = 0, lastErr = '';
+      for (const id of cancellable) {
+        try { await cancelBooking(id); ok++; }
+        catch (e) { failed++; lastErr = e && e.message || 'unknown error'; }
+      }
+      if (ok)     notify(`${ok} booking${ok > 1 ? 's' : ''} cancelled.`, 'success');
+      if (failed) showActionError(`Cancellation failed for ${failed} booking${failed > 1 ? 's' : ''}: ${lastErr}`);
+      await loadBoard();
+    }
+
+    // ---- detail modal ----------------------------------------------------
+    function openJob(id) {
+      const j = board.jobs.find(x => String(x.id) === String(id));
+      if (!j) return;
+      const a = artisanById(j.assignedTo);
+      const canAssign = apiMode && j.stage === 'pending_assignment';
+      const canCancel = apiMode && j.stage !== 'completed' && j.stage !== 'cancelled';
+      const assignedLabel = a ? esc(a.name)
+        : (j.painterName ? esc(j.painterName)
+        : '<span style="color:var(--ink-500);">— unassigned —</span>');
+
+      const picker = canAssign
+        ? (board.artisans.map(m => `
+            <div class="artisan-pick" onclick="assignFromModal('${esc(j.id)}','${esc(m.id)}')">
+              <div class="avatar" style="background:${m.color};">${esc(m.initials)}</div>
+              <div style="flex:1;">
+                <strong>${esc(m.name)}</strong>
+                <div class="small">${esc(m.region)}${m.rating ? ' · ★ ' + m.rating.toFixed(1) : ''}${m.rate ? ' · ' + esc(m.rate) + ' GHS/day' : ''}</div>
+              </div>
+            </div>`).join('') || '<div class="small" style="color:var(--ink-500);">No painters in the roster.</div>')
+        : '';
+
+      const host = document.getElementById('jobModal');
+      host.classList.remove('hidden');
+      host.innerHTML = `
+        <div class="modal-backdrop" onclick="if(event.target===this)closeJob()">
+          <div class="modal" style="max-width:580px;">
+            <div class="modal-head">
+              <div>
+                <div class="small">${esc(j.ref)}</div>
+                <h3>${esc(j.service)}</h3>
+              </div>
+              <div class="close-btn" onclick="closeJob()">✕</div>
+            </div>
+            <div class="modal-body">
+              <div style="display:flex;gap:8px;align-items:center;margin-bottom:16px;flex-wrap:wrap;">
+                <span class="pill" style="background:var(--ink-100);color:var(--navy-900);font-weight:700;">${esc(BOARD_STAGE_LABEL[j.stage] || j.stage)}</span>
+                ${j.paymentStatus ? `<span class="pill">Payment: ${esc(j.paymentStatus)}</span>` : ''}
+                ${j.quoteId ? `<span class="small" style="color:var(--ink-500);">Quote <span style="font-family:ui-monospace,Menlo,monospace;">${esc(j.quoteId)}</span></span>` : ''}
+              </div>
+
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px;">
+                <div><div class="small">Customer</div><strong>${esc(j.customer)}</strong></div>
+                <div><div class="small">Amount</div><strong>${money(j.amount)}</strong></div>
+                <div><div class="small">Scheduled</div><strong>${esc(shortDate(j.date))}${j.endDate && j.endDate !== j.date ? ' → ' + esc(shortDate(j.endDate)) : ''}</strong></div>
+                <div><div class="small">Area</div><strong>${esc(j.area)} m²</strong></div>
+                <div style="grid-column:1/-1;"><div class="small">Address</div><strong>${esc(j.address)}</strong></div>
+                ${j.notes ? `<div style="grid-column:1/-1;"><div class="small">Notes</div><div style="font-size:0.9rem;white-space:pre-wrap;">${esc(j.notes)}</div></div>` : ''}
+              </div>
+
+              <div class="small">Assigned Paint Master</div>
+              <div style="padding:10px 14px;border:1px solid var(--ink-300);border-radius:10px;background:var(--ink-50);font-size:0.92rem;margin-bottom:4px;">
+                ${assignedLabel}
+              </div>
+
+              ${canAssign ? `
+                <h3 style="font-size:1rem;margin:18px 0 2px;">Assign a Paint Master</h3>
+                <p class="small" style="color:var(--ink-500);">Picking a painter sends them a confirmation request and moves the booking to "Painter Assigned".</p>
+                <div style="display:flex;flex-direction:column;gap:8px;max-height:300px;overflow-y:auto;margin-top:8px;">
+                  ${picker}
+                </div>`
+              : (apiMode
+                  ? `<p class="small" style="color:var(--ink-500);margin-top:8px;">Reassignment and stage changes happen through the painter and QA workflows — this board shows them read-only.</p>`
+                  : `<p class="small" style="color:var(--ink-500);margin-top:8px;">Offline demo view — reconnect to the server to manage this booking.</p>`)}
+            </div>
+            <div class="flex-between" style="padding:16px 20px;border-top:1px solid var(--ink-100);">
+              <button class="btn btn-ghost" onclick="closeJob()">Close</button>
+              ${canCancel ? `<button class="btn btn-outline" style="color:var(--red);border-color:var(--red);" onclick="cancelFromModal('${esc(j.id)}')">Cancel booking</button>` : ''}
+            </div>
+          </div>
+        </div>`;
+    }
+    function closeJob() {
+      const m = document.getElementById('jobModal');
+      m.classList.add('hidden');
+      m.innerHTML = '';
+    }
+
+    async function assignFromModal(bookingId, painterId) {
+      if (!requireApi()) return;
+      clearActionError();
+      try {
+        const r = await assignBooking(bookingId, painterId);
+        notify((r && r.message) || 'Painter assigned.', 'success');
+        closeJob();
+        await loadBoard();
+      } catch (e) {
+        showActionError(`Could not assign painter: ${e.message || 'unknown error'}`);
+      }
+    }
+    async function cancelFromModal(bookingId) {
+      if (!requireApi()) return;
+      if (!confirm('Cancel this booking? The refund is calculated by the cancellation policy.')) return;
+      clearActionError();
+      try {
+        const r = await cancelBooking(bookingId);
+        notify((r && r.message) || 'Booking cancelled.', 'success');
+        closeJob();
+        await loadBoard();
+      } catch (e) {
+        showActionError(`Could not cancel booking: ${e.message || 'unknown error'}`);
+      }
+    }
+
+    // ---- filters ---------------------------------------------------------
+    document.getElementById('jbSearch').addEventListener('input',  e => { filters.search  = e.target.value; render(); });
+    document.getElementById('jbService').addEventListener('change', e => { filters.service = e.target.value; render(); });
+    document.getElementById('jbArtisan').addEventListener('change', e => { filters.artisan = e.target.value; render(); });
+    document.getElementById('jbCity').addEventListener('change',    e => { filters.city    = e.target.value; render(); });
+    function clearFilters() {
+      filters.search = ''; filters.service = ''; filters.artisan = ''; filters.city = '';
+      document.getElementById('jbSearch').value  = '';
+      document.getElementById('jbService').value = '';
+      document.getElementById('jbArtisan').value = '';
+      document.getElementById('jbCity').value    = '';
+      render();
+    }
+
+    // ---- declutter toggles ----------------------------------------------
     document.getElementById('hideEmpty').checked = filters.hideEmpty;
     document.getElementById('compact').checked   = filters.compact;
     document.getElementById('hideEmpty').addEventListener('change', e => {
@@ -181,747 +683,43 @@
     document.getElementById('compact').addEventListener('change', e => {
       filters.compact = e.target.checked; savePrefs(); applyCompact(); render();
     });
-    document.getElementById('showDeleted').checked = filters.showDeleted;
-    document.getElementById('showDeleted').addEventListener('change', e => {
-      filters.showDeleted = e.target.checked; savePrefs(); render();
-    });
     function applyCompact() {
       document.body.classList.toggle('jb-compact', filters.compact);
     }
     applyCompact();
 
-    function render() {
-      store = getStore();
-
-      // Populate filter dropdowns (once)
-      if (!document.getElementById('jbService').dataset.loaded) {
-        const services = [...new Set(store.jobs.map(j => j.service))].sort();
-        document.getElementById('jbService').insertAdjacentHTML('beforeend', services.map(s => `<option>${s}</option>`).join(''));
-        const cities = [...new Set(store.jobs.map(j => j.address.split(',').pop().trim()))].sort();
-        document.getElementById('jbCity').insertAdjacentHTML('beforeend', cities.map(c => `<option>${c}</option>`).join(''));
-        const masterOpts = store.artisans.map(a => `<option value="${a.id}">${a.name}</option>`).join('');
-        document.getElementById('jbArtisan').insertAdjacentHTML('beforeend', masterOpts);
-        document.getElementById('jbService').dataset.loaded = '1';
-      }
-
-      const filtered = store.jobs.filter(j => {
-        // Soft-deleted jobs are hidden by default; the "Show deleted" toggle
-        // (top right of the declutter row) reveals them so admins can restore.
-        if (j.deleted_at && !filters.showDeleted) return false;
-        if (filters.search) {
-          const q = filters.search.toLowerCase();
-          const hay = `${j.ref} ${j.customer} ${j.service} ${j.address}`.toLowerCase();
-          if (!hay.includes(q)) return false;
-        }
-        if (filters.service && j.service !== filters.service) return false;
-        if (filters.artisan === 'null' && j.assignedTo) return false;
-        else if (filters.artisan && filters.artisan !== 'null' && j.assignedTo !== filters.artisan) return false;
-        if (filters.city && !j.address.includes(filters.city)) return false;
-        return true;
-      });
-
-      document.getElementById('jbCount').textContent = `${filtered.length} of ${store.jobs.length} jobs`;
-
-      // Render the stage chips fresh so per-stage counts reflect the latest store.
-      renderStageChips();
-
-      // Decide which stage columns to render: (a) only the focused stage if
-      // the dispatcher picked one, (b) otherwise all stages, optionally
-      // hiding any with zero jobs after filters apply.
-      const stagesToShow = filters.stage
-        ? [filters.stage]
-        : STAGES.filter(st => !filters.hideEmpty || filtered.some(j => j.stage === st));
-
-      const board = document.getElementById('board');
-      board.innerHTML = stagesToShow.map(stage => {
-        const col = filtered.filter(j => j.stage === stage);
-        const cards = col.map(j => {
-          const a = artisanById(j.assignedTo);
-          const isSelected = selected.has(j.id);
-          // Inspection-stage cards have no quote yet — surface the inspection
-          // note instead of an amount. assignedTo on these = the inspecting master.
-          const isInsp = j.stage === 'inspection';
-          const amountBlock = isInsp
-            ? `<span class="amt" style="color:var(--orange);font-size:0.78rem;">⚠ Awaiting quote</span>`
-            : `<span class="amt">${fmtGHS(j.amount)}</span>`;
-          const inspNote = isInsp && j.inspectionNotes
-            ? `<div class="small" style="color:var(--ink-500);margin-top:6px;font-style:italic;">${j.inspectionNotes}</div>`
-            : '';
-          const masterRole = isInsp ? 'Inspector' : 'Master';
-          // Soft-deleted cards: render with a strikethrough/dim treatment plus
-          // an inline Restore button. They only appear here when "Show deleted"
-          // is on (the filter chain otherwise drops them).
-          const isDeleted = !!j.deleted_at;
-          return `
-            <div class="job-card ${isSelected ? 'selected' : ''}" data-id="${j.id}" style="${isDeleted ? 'opacity:0.6;border:1px dashed var(--red);background:#FEF2F2;' : ''}">
-              ${isDeleted
-                ? `<span class="pill" style="background:var(--red);color:#fff;font-size:0.62rem;letter-spacing:0.06em;text-transform:uppercase;position:absolute;top:8px;right:8px;padding:2px 8px;border-radius:999px;">Deleted</span>`
-                : `<input type="checkbox" class="card-tick" data-id="${j.id}" ${isSelected ? 'checked' : ''} aria-label="Select ${j.ref}" />
-                   <button class="card-delete" data-id="${j.id}" title="Delete ${j.ref}" aria-label="Delete ${j.ref}"
-                           onclick="event.stopPropagation();confirmDeleteJob('${j.id}');">🗑</button>`}
-              <div onclick="${isDeleted ? '' : `openJob('${j.id}')`}" style="${isDeleted ? '' : 'cursor:pointer;'}">
-                <div class="ref">${j.ref}</div>
-                <h4 style="padding-right:30px;${isDeleted ? 'text-decoration:line-through;' : ''}">${j.service}</h4>
-                <div class="meta">${j.customer} · ${fmtShort(j.date)}${j.endDate && j.endDate !== j.date ? '–' + fmtShort(j.endDate) : ''}</div>
-                ${inspNote}
-                ${isDeleted
-                  ? `<div class="small" style="margin-top:6px;color:var(--ink-500);">Deleted by ${j.deleted_by || '—'}</div>
-                     <button class="btn btn-outline" style="margin-top:8px;width:100%;padding:6px;font-size:0.78rem;" onclick="event.stopPropagation();restoreJob('${j.id}');">↶ Restore</button>`
-                  : `<div class="foot">
-                       ${ a
-                           ? `<div class="avatar" style="width:24px;height:24px;background:${a.color};font-size:0.65rem;" title="${masterRole}: ${a.name}">${a.initials}</div>`
-                           : `<span class="small" style="color:var(--ink-500);">No ${masterRole.toLowerCase()}</span>` }
-                       ${amountBlock}
-                     </div>`}
-              </div>
-            </div>
-          `;
-        }).join('');
-        return `
-          <div class="kanban-col" data-stage="${stage}">
-            <div class="col-head"><span>${STAGE_LABEL[stage]}</span><span class="count">${col.length}</span></div>
-            ${cards || '<div class="small" style="text-align:center;padding:12px 0;color:var(--ink-500);">No jobs at this stage</div>'}
-          </div>
-        `;
-      }).join('');
-
-      bindTicks();
-      refreshBatchBar();
-    }
-
-    // Wire each checkbox to the `selected` set and toggle the .selected class
-    // on its parent card. Stop propagation so ticking doesn't open the modal.
-    function bindTicks() {
-      document.querySelectorAll('.card-tick').forEach(cb => {
-        cb.addEventListener('click', e => e.stopPropagation());
-        cb.addEventListener('change', e => {
-          const id = e.target.dataset.id;
-          if (e.target.checked) selected.add(id);
-          else selected.delete(id);
-          const card = e.target.closest('.job-card');
-          if (card) card.classList.toggle('selected', e.target.checked);
-          refreshBatchBar();
-        });
-      });
-    }
-
-    // Show / hide the floating action bar; rebuild its dropdowns when the
-    // selection changes so the master picker reflects current availability.
-    function refreshBatchBar() {
-      const bar = document.getElementById('batchBar');
-      const n = selected.size;
-      bar.classList.toggle('show', n > 0);
-      document.getElementById('batchCount').textContent =
-        n === 1 ? '1 selected' : `${n} selected`;
-
-      // Rebuild the master picker from the current artisans list.
-      const assignSel = document.getElementById('batchAssign');
-      assignSel.innerHTML = '<option value="">Assign master…</option>'
-        + getStore().artisans.map(a =>
-            `<option value="${a.id}">${a.name} · ${a.region} · ${a.status === 'available' ? 'free' : a.status.replace('_',' ')}</option>`
-          ).join('')
-        + '<option value="__unassign__" style="color:#aaa;">— Unassign —</option>';
-
-      // Rebuild the stage picker. For mixed selections we still show all
-      // stages; the action validates per-job.
-      const stageSel = document.getElementById('batchStage');
-      stageSel.innerHTML = '<option value="">Move to stage…</option>'
-        + STAGES.map(st => `<option value="${st}">${STAGE_LABEL[st]}</option>`).join('');
-    }
-
-    // ---------- Batch operations ----------
-    document.getElementById('batchAssign').addEventListener('change', e => {
-      const v = e.target.value;
-      if (!v) return;
-      const isUnassign = v === '__unassign__';
-      const masterName = isUnassign ? null : artisanById(v)?.name;
-      const ids = [...selected];
-      mutate(s => {
-        ids.forEach(id => {
-          const j = s.jobs.find(x => x.id === id);
-          if (!j) return;
-          j.assignedTo = isUnassign ? null : v;
-          // For inspection-stage jobs, this is assigning the inspector.
-          const verb = j.stage === 'inspection' ? 'inspector' : 'master';
-          s.activity.unshift({
-            kind: 'dispatch', who: j.customer,
-            what: isUnassign ? `${verb} unassigned` : `assigned ${verb}: ${masterName}`,
-            amount: null, t: Date.now()
-          });
-        });
-      });
-      e.target.value = '';
-      toast(isUnassign
-        ? `${ids.length} job${ids.length>1?'s':''} unassigned`
-        : `${ids.length} job${ids.length>1?'s':''} → ${masterName}`);
-      render();
-    });
-
-    document.getElementById('batchStage').addEventListener('change', e => {
-      const newStage = e.target.value;
-      if (!newStage) return;
-      const ids = [...selected];
-      let blocked = 0, moved = 0;
-      mutate(s => {
-        ids.forEach(id => {
-          const j = s.jobs.find(x => x.id === id);
-          if (!j) return;
-          // Guard: dispatch requires an assigned master.
-          if (newStage === 'dispatched' && !j.assignedTo) { blocked++; return; }
-          // Guard: inspection requires an assigned inspector before moving past it.
-          if (j.stage === 'inspection' && newStage !== 'inspection' && !j.assignedTo) { blocked++; return; }
-          j.stage = newStage;
-          moved++;
-          s.activity.unshift({
-            kind: newStage === 'completed' ? 'done' : newStage === 'qa' ? 'qa' : 'dispatch',
-            who: j.customer, what: `moved to ${STAGE_LABEL[newStage]}`,
-            amount: null, t: Date.now()
-          });
-        });
-      });
-      e.target.value = '';
-      if (moved) toast(`${moved} job${moved>1?'s':''} → ${STAGE_LABEL[newStage]}`);
-      if (blocked) toast(`${blocked} blocked — assign a master first.`, 'warn');
-      render();
-    });
-
-    function batchDispatch() {
-      const ids = [...selected];
-      let blocked = 0, dispatched = 0;
-      mutate(s => {
-        ids.forEach(id => {
-          const j = s.jobs.find(x => x.id === id);
-          if (!j) return;
-          if (!j.assignedTo) { blocked++; return; }
-          j.stage = 'dispatched';
-          dispatched++;
-          const a = s.artisans.find(a => a.id === j.assignedTo);
-          if (a) a.status = 'on_job';
-          s.activity.unshift({
-            kind: 'dispatch', who: j.customer,
-            what: `dispatched to ${a ? a.name : '—'}`,
-            amount: null, t: Date.now()
-          });
-        });
-      });
-      if (dispatched) toast(`${dispatched} job${dispatched>1?'s':''} dispatched`);
-      if (blocked)    toast(`${blocked} blocked — pick a master first.`, 'warn');
-      render();
-    }
-
-    function clearSelection() {
-      selected.clear();
-      render();
-    }
-
-    // Bulk soft-delete every ticked job. Single typed-confirmation rather
-    // than per-row to keep the UX bearable when the dispatcher cancels a
-    // batch at end-of-week. Delegates to performDeleteJob so the per-job
-    // bookkeeping (free painter, emit activity) stays consistent.
-    function batchDelete() {
-      const u = (typeof pmAuth !== 'undefined') ? pmAuth.user() : null;
-      if (!u || u.role !== 'admin') { toast('Only admins can delete jobs.', 'warn'); return; }
-      const ids = [...selected];
-      if (!ids.length) return;
-      const refs = ids.map(id => getStore().jobs.find(j => j.id === id)?.ref).filter(Boolean);
-      const ans = prompt(`Delete ${ids.length} job${ids.length === 1 ? '' : 's'}?\n\n${refs.slice(0, 10).join(', ')}${refs.length > 10 ? ' +' + (refs.length - 10) + ' more' : ''}\n\nType "delete ${ids.length}" to confirm:`);
-      if (String(ans || '').trim().toLowerCase() !== `delete ${ids.length}`) { toast('Cancelled.'); return; }
-      const actor = (u && u.name) || 'Admin';
-      let n = 0;
-      mutate(store => {
-        ids.forEach(id => {
-          const row = store.jobs.find(x => x.id === id); if (!row) return;
-          row.deleted_at = new Date().toISOString();
-          row.deleted_by = actor;
-          if (row.assignedTo) {
-            const a = store.artisans.find(x => x.id === row.assignedTo);
-            if (a && a.status === 'on_job') a.status = 'available';
-          }
-          store.activity.unshift({ kind:'dispatch', who: actor, what: `deleted job ${row.ref} · ${row.customer}`, amount: null, t: Date.now() });
-          n++;
-        });
-      });
-      if (typeof pmActivity !== 'undefined') {
-        pmActivity.emit({
-          kind: 'system', severity: 'warn',
-          title: `${n} job${n === 1 ? '' : 's'} deleted in bulk`,
-          sub: refs.slice(0, 5).join(', ') + (refs.length > 5 ? ' +' + (refs.length - 5) + ' more' : ''),
-          source: { role: 'admin', name: actor }
-        });
-      }
-      selected.clear();
-      toast(`${n} job${n === 1 ? '' : 's'} deleted.`);
-      render();
-      updateNavCounts();
-    }
-
-    function selectAll() {
-      // Tick every job currently visible in the filtered set.
-      const visible = [...document.querySelectorAll('.card-tick')];
-      const allSelected = visible.length > 0 && visible.every(cb => cb.checked);
-      visible.forEach(cb => {
-        const id = cb.dataset.id;
-        if (allSelected) selected.delete(id);
-        else selected.add(id);
-      });
-      render();
-    }
-
-    // ---------- Filters ----------
-    document.getElementById('jbSearch').addEventListener('input', e => { filters.search = e.target.value; render(); });
-    document.getElementById('jbService').addEventListener('change', e => { filters.service = e.target.value; render(); });
-    document.getElementById('jbArtisan').addEventListener('change', e => { filters.artisan = e.target.value; render(); });
-    document.getElementById('jbCity').addEventListener('change',    e => { filters.city = e.target.value; render(); });
-    function clearFilters() {
-      filters.search = ''; filters.service = ''; filters.artisan = ''; filters.city = '';
-      document.getElementById('jbSearch').value = '';
-      document.getElementById('jbService').value = '';
-      document.getElementById('jbArtisan').value = '';
-      document.getElementById('jbCity').value = '';
-      render();
-    }
-
-    // ---------- Detail modal ----------
-    function openJob(id) {
-      const s = getStore();
-      const j = s.jobs.find(x => x.id === id);
-      const a = artisanById(j.assignedTo);
-      const stageOpts = STAGES.map(st => `<option value="${st}" ${st===j.stage?'selected':''}>${STAGE_LABEL[st]}</option>`).join('');
-
-      const picker = s.artisans.map(m => {
-        const match = j.tags && j.tags.some(t => m.specs.includes(t));
-        const busy = m.status !== 'available';
-        return `
-          <div class="artisan-pick ${j.assignedTo===m.id?'selected':''} ${busy?'muted':''}" onclick="pickArtisan('${j.id}','${m.id}')" title="${busy?m.status.replace('_',' '):'available'}">
-            <div class="avatar" style="background:${m.color};">${m.initials}</div>
-            <div style="flex:1;">
-              <strong>${m.name}</strong> ${match?'<span class="badge gold">skill match</span>':''}
-              <div class="small">${m.specs.join(' · ')} · ${m.region} · ★ ${m.rating}</div>
-            </div>
-            <div>
-              <span class="st ${m.status==='available'?'st-done':m.status==='on_job'?'st-site':'st-warn'}">${m.status==='on_job'?'On job':m.status==='available'?'Free':'Leave'}</span>
-            </div>
-          </div>
-        `;
-      }).join('');
-
-      const host = document.getElementById('jobModal');
-      host.classList.remove('hidden');
-      host.innerHTML = `
-        <div class="modal-backdrop" onclick="if(event.target===this)closeJob()">
-          <div class="modal">
-            <div class="modal-head">
-              <div>
-                <div class="small">${j.ref}</div>
-                <h3>${j.service}</h3>
-              </div>
-              <div class="close-btn" onclick="closeJob()">✕</div>
-            </div>
-            <div class="modal-body">
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;">
-                <div><div class="small">Customer</div><strong>${j.customer}</strong></div>
-                <div><div class="small">Amount</div><strong>${fmtGHS(j.amount)}</strong></div>
-                <div><div class="small">Scheduled</div><strong>${fmtShort(j.date)}${j.endDate && j.endDate !== j.date ? ' → ' + fmtShort(j.endDate) : ''} · ${j.window}</strong></div>
-                <div><div class="small">Area</div><strong>${j.area} m²</strong></div>
-                <div style="grid-column:1/-1;"><div class="small">Address</div><strong>${j.address}</strong></div>
-              </div>
-
-              <div class="row">
-                <div class="field">
-                  <label>Stage</label>
-                  <select class="select" onchange="setStage('${j.id}', this.value)">${stageOpts}</select>
-                </div>
-                <div class="field">
-                  <label>Assigned Paint Master</label>
-                  <div style="padding:10px 14px;border:1px solid var(--ink-300);border-radius:10px;background:var(--ink-50);font-size:0.9rem;">
-                    ${ a ? a.name : '<span style="color:var(--ink-500);">— unassigned —</span>'}
-                  </div>
-                </div>
-              </div>
-
-              ${j.stage === 'inspection' && j.inspectionNotes ? `
-                <div style="background:#FFF8E1;border:1px solid #F2D04A;border-radius:10px;padding:12px 14px;margin-bottom:16px;">
-                  <strong style="color:#6B4F00;font-size:0.88rem;">Inspection note</strong>
-                  <p style="margin:4px 0 0;font-size:0.88rem;color:#4D3800;">${j.inspectionNotes}</p>
-                </div>
-              ` : ''}
-
-              <h3 style="margin-top:24px;font-size:1rem;">${j.stage === 'inspection' ? 'Assign an Inspector' : 'Assign a Paint Master'}</h3>
-              <p class="small">${j.stage === 'inspection'
-                ? 'A senior Paint Master visits the site and produces the on-site quote. We highlight masters whose specialties match the tags below.'
-                : "We've highlighted Masters whose specialties match the tags on this job."} ${(j.tags||[]).map(t=>`<span class="pill">${t}</span>`).join(' ')}</p>
-              <div style="display:flex;flex-direction:column;gap:8px;max-height:320px;overflow-y:auto;">
-                ${picker}
-              </div>
-
-              <div class="flex-between" style="margin-top:24px;padding-top:16px;border-top:1px solid var(--ink-100);">
-                <div style="display:flex;gap:8px;">
-                  <button class="btn btn-ghost" onclick="closeJob()">Close</button>
-                  <button class="btn btn-outline" style="color:var(--red);border-color:var(--red);" onclick="confirmDeleteJob('${j.id}')">🗑 Delete</button>
-                </div>
-                <div style="display:flex;gap:8px;">
-                  <button class="btn btn-outline" onclick="unassign('${j.id}')">Unassign</button>
-                  <button class="btn btn-primary" onclick="dispatchJob('${j.id}')">Dispatch →</button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      `;
-    }
-    function closeJob() {
-      document.getElementById('jobModal').classList.add('hidden');
-      document.getElementById('jobModal').innerHTML = '';
-    }
-
-    function pickArtisan(jobId, masterId) {
-      mutate(store => {
-        const j = store.jobs.find(x => x.id === jobId);
-        j.assignedTo = masterId;
-      });
-      const a = artisanById(masterId);
-      toast(`Assigned to ${a.name}`);
-      openJob(jobId);   // refresh modal
-      render();
-    }
-    function unassign(id) {
-      mutate(store => { store.jobs.find(x => x.id === id).assignedTo = null; });
-      toast('Unassigned');
-      openJob(id);
-      render();
-    }
-    function setStage(id, stage) {
-      mutate(store => { store.jobs.find(x => x.id === id).stage = stage; });
-      render();
-    }
-    // ─────────────────────────────────────────────
-    // Delete a job (soft-delete). Reserved for admins. The dispatcher must
-    // type the booking ref to confirm — same pattern GitHub uses for
-    // destructive actions, prevents stray clicks. Soft-deletion sets
-    // deleted_at so we can restore from the activity log if needed; the
-    // kanban filters deleted rows out of view by default.
-    //
-    // Also unassigns the painter so their availability frees up immediately.
-    // ─────────────────────────────────────────────
-    function confirmDeleteJob(id) {
-      const j = getStore().jobs.find(x => x.id === id);
-      if (!j) return;
-      // Role gate — only admins can delete. Painters / customers shouldn't
-      // ever land here (admin shell already blocks them) but defence-in-depth.
-      const u = (typeof pmAuth !== 'undefined') ? pmAuth.user() : null;
-      if (!u || u.role !== 'admin') {
-        toast('Only admins can delete jobs.', 'warn'); return;
-      }
-      const host = document.getElementById('jobModal');
-      // We render the confirm in the same modal so closing it returns focus
-      // to the kanban (not back to the job detail, which is about to be gone).
-      host.innerHTML = `
-        <div class="modal-backdrop" onclick="if(event.target===this)closeJob()">
-          <div class="modal" style="max-width:520px;">
-            <div class="modal-head">
-              <div>
-                <h3 style="margin:0;color:var(--red);">🗑 Delete this job?</h3>
-                <div class="small" style="color:var(--ink-500);">Soft-deleted. Hidden from the kanban — recoverable from the deleted-jobs view for 30 days.</div>
-              </div>
-              <div class="close-btn" onclick="closeJob()">✕</div>
-            </div>
-            <div class="modal-body">
-              <div style="background:#FEE2E2;border:1px solid #FCA5A5;border-radius:10px;padding:12px 14px;font-size:0.88rem;color:#991B1B;line-height:1.5;margin-bottom:14px;">
-                <strong>${escDel(j.ref)}</strong> · ${escDel(j.service)} · ${escDel(j.customer)}<br/>
-                ${escDel(fmtShort(j.date))}${j.endDate && j.endDate !== j.date ? ' → ' + escDel(fmtShort(j.endDate)) : ''}${j.assignedTo ? ' · assigned to ' + escDel(artisanById(j.assignedTo)?.name || '—') : ' · unassigned'}
-              </div>
-              <p class="small" style="margin-bottom:6px;">Type the booking ref <code style="background:var(--ink-100);padding:1px 6px;border-radius:4px;font-family:ui-monospace,monospace;">${escDel(j.ref)}</code> to confirm:</p>
-              <input id="delConfirmRef" type="text" placeholder="${escDel(j.ref)}" autocomplete="off" autocapitalize="characters" style="width:100%;padding:10px 12px;border:1.5px solid var(--ink-300);border-radius:9px;font-size:0.94rem;font-family:ui-monospace,monospace;" />
-              <p class="small" style="color:var(--ink-500);margin-top:10px;">The customer keeps any deposit they've already paid; refunds are processed separately if applicable.</p>
-            </div>
-            <div class="flex-between" style="padding:16px 20px;border-top:1px solid var(--ink-100);">
-              <button class="btn btn-ghost" onclick="openJob('${j.id}')">← Back</button>
-              <button class="btn btn-primary" id="delConfirmBtn" style="background:var(--red);" disabled onclick="performDeleteJob('${j.id}')">Delete permanently</button>
-            </div>
-          </div>
-        </div>
-      `;
-      // Enable the delete button only when the typed value matches the ref
-      // (case-insensitive, trimmed).
-      const input = document.getElementById('delConfirmRef');
-      const btn   = document.getElementById('delConfirmBtn');
-      input.addEventListener('input', () => {
-        btn.disabled = input.value.trim().toUpperCase() !== j.ref.toUpperCase();
-      });
-      setTimeout(() => input.focus(), 30);
-    }
-
-    function performDeleteJob(id) {
-      const j = getStore().jobs.find(x => x.id === id); if (!j) return;
-      const actor = (typeof pmAuth !== 'undefined' && pmAuth.user()?.name) || 'Admin';
-      mutate(store => {
-        const row = store.jobs.find(x => x.id === id); if (!row) return;
-        row.deleted_at = new Date().toISOString();
-        row.deleted_by = actor;
-        // Free the assigned painter so they don't stay in 'on_job' status.
-        if (row.assignedTo) {
-          const a = store.artisans.find(x => x.id === row.assignedTo);
-          if (a && a.status === 'on_job') a.status = 'available';
-        }
-        store.activity.unshift({
-          kind: 'dispatch', who: actor,
-          what: `deleted job ${row.ref} · ${row.customer}`,
-          amount: null, t: Date.now()
-        });
-      });
-      if (typeof pmActivity !== 'undefined') {
-        pmActivity.emit({
-          kind: 'system', severity: 'warn',
-          title: `Job deleted · ${j.ref}`,
-          sub: `${j.service} · ${j.customer}`,
-          source: { role: 'admin', name: actor }
-        });
-      }
-      // Drop the selection if this job was ticked.
-      selected.delete(id);
-      closeJob();
-      toast(`${j.ref} deleted.`);
-      render();
-      updateNavCounts();
-    }
-
-    // Restore a soft-deleted job (used from the "Show deleted" view).
-    function restoreJob(id) {
-      mutate(store => {
-        const row = store.jobs.find(x => x.id === id); if (!row) return;
-        delete row.deleted_at;
-        delete row.deleted_by;
-      });
-      toast('Job restored.');
-      render();
-    }
-
-    function escDel(s) {
-      return String(s == null ? '' : s)
-        .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
-        .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
-    }
-
-    function dispatchJob(id) {
-      const j = getStore().jobs.find(x => x.id === id);
-      if (!j.assignedTo) { toast('Pick a Paint Master first.', 'warn'); return; }
-      const painter = artisanById(j.assignedTo);
-      mutate(store => {
-        const jj = store.jobs.find(x => x.id === id);
-        jj.stage = 'dispatched';
-        // Mark assigned master on_job
-        const a = store.artisans.find(a => a.id === jj.assignedTo);
-        if (a) a.status = 'on_job';
-        store.activity.unshift({ kind:'dispatch', who: jj.customer, what: `dispatched to ${a?a.name:'—'}`, amount:null, t: Date.now() });
-      });
-      // Notify the painter via pmActivity so it lands in their bell.
-      if (painter && typeof pmActivity !== 'undefined') {
-        const actor = (typeof pmAuth !== 'undefined' && pmAuth.user()?.name) || 'Admin';
-        pmActivity.emit({
-          kind: 'booking',
-          title: `Job dispatched · ${j.ref}`,
-          sub:   `${j.service} · ${j.customer} · ${fmtShort(j.date)}${j.endDate && j.endDate !== j.date ? ' → ' + fmtShort(j.endDate) : ''}`,
-          source: { role: 'admin', name: actor },
-          target: { role: 'painter', id: painter.id, name: painter.name },
-        });
-      }
-      toast(`${j.ref} dispatched`);
-      closeJob();
-      render();
-    }
-
-    // ─────────────────────────────────────────────
-    // Add Job — modal that creates a new job record straight into the kanban.
-    // No auto-assign: the job lands at stage='new' so the dispatcher routes
-    // it through the existing assign / dispatch flow on the same page.
-    //
-    // Best-effort POST to /api/admin/jobs — silent fail if the endpoint
-    // isn't live yet; the local mutation still applies.
-    // ─────────────────────────────────────────────
-    function openNew() {
-      const s = getStore();
-      const services = [...new Set(s.jobs.map(j => j.service))].sort();
-      const cityOpts = pmRegions.list().map(r => `<option>${r.name}</option>`).join('');
-      const today = new Date().toISOString().slice(0,10);
-      const host = document.getElementById('jobModal');
-      host.classList.remove('hidden');
-      host.innerHTML = `
-        <div class="modal-backdrop" onclick="if(event.target===this)closeJob()">
-          <div class="modal" style="max-width:560px;">
-            <div class="modal-head">
-              <div>
-                <h3 style="margin:0;">Add a job</h3>
-                <div class="small" style="color:var(--ink-500);">Lands in the kanban at "New". Assign a Master + dispatch from there.</div>
-              </div>
-              <div class="close-btn" onclick="closeJob()">✕</div>
-            </div>
-            <div class="modal-body">
-              <div style="display:grid;gap:14px;">
-                <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:12px;">
-                  <div>
-                    <label style="display:block;font-size:0.82rem;font-weight:600;color:var(--ink-700);margin-bottom:4px;">Customer name <span style="color:var(--red);">*</span></label>
-                    <input id="njCustomer" type="text" placeholder="Yaa Adjei" style="width:100%;padding:10px 12px;border:1.5px solid var(--ink-300);border-radius:9px;font-size:0.94rem;font-family:inherit;" />
-                  </div>
-                  <div>
-                    <label style="display:block;font-size:0.82rem;font-weight:600;color:var(--ink-700);margin-bottom:4px;">Service <span style="color:var(--red);">*</span></label>
-                    <select id="njService" style="width:100%;padding:10px 12px;border:1.5px solid var(--ink-300);border-radius:9px;font-size:0.94rem;font-family:inherit;background:#fff;">
-                      ${services.map(sv => `<option>${sv}</option>`).join('')}
-                    </select>
-                  </div>
-                </div>
-                <div>
-                  <label style="display:block;font-size:0.82rem;font-weight:600;color:var(--ink-700);margin-bottom:4px;">Address <span style="color:var(--red);">*</span></label>
-                  <input id="njAddress" type="text" placeholder="12 Boundary Road, Cantonments, Accra" style="width:100%;padding:10px 12px;border:1.5px solid var(--ink-300);border-radius:9px;font-size:0.94rem;font-family:inherit;" />
-                </div>
-                <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px;">
-                  <div>
-                    <label style="display:block;font-size:0.82rem;font-weight:600;color:var(--ink-700);margin-bottom:4px;">City</label>
-                    <select id="njCity" style="width:100%;padding:10px 12px;border:1.5px solid var(--ink-300);border-radius:9px;font-size:0.94rem;font-family:inherit;background:#fff;">${cityOpts}</select>
-                  </div>
-                  <div>
-                    <label style="display:block;font-size:0.82rem;font-weight:600;color:var(--ink-700);margin-bottom:4px;">Start date</label>
-                    <input id="njDate" type="date" value="${today}" style="width:100%;padding:10px 12px;border:1.5px solid var(--ink-300);border-radius:9px;font-size:0.94rem;font-family:inherit;" />
-                  </div>
-                  <div>
-                    <label style="display:block;font-size:0.82rem;font-weight:600;color:var(--ink-700);margin-bottom:4px;">Duration <span class="small" style="font-weight:400;color:var(--ink-500);">(days)</span></label>
-                    <input id="njDuration" type="number" min="1" max="60" step="1" value="1" style="width:100%;padding:10px 12px;border:1.5px solid var(--ink-300);border-radius:9px;font-size:0.94rem;font-family:inherit;" />
-                  </div>
-                  <div>
-                    <label style="display:block;font-size:0.82rem;font-weight:600;color:var(--ink-700);margin-bottom:4px;">End date <span class="small" style="font-weight:400;color:var(--ink-500);">(auto)</span></label>
-                    <input id="njEndDate" type="date" readonly style="width:100%;padding:10px 12px;border:1.5px solid var(--ink-300);border-radius:9px;font-size:0.94rem;font-family:inherit;background:var(--ink-50);" />
-                  </div>
-                </div>
-                <div style="display:grid;grid-template-columns:1fr;gap:12px;">
-                  <div>
-                    <label style="display:block;font-size:0.82rem;font-weight:600;color:var(--ink-700);margin-bottom:4px;">Window</label>
-                    <select id="njWindow" style="width:100%;padding:10px 12px;border:1.5px solid var(--ink-300);border-radius:9px;font-size:0.94rem;font-family:inherit;background:#fff;">
-                      <option>Morning</option><option>Afternoon</option><option>All-day</option>
-                    </select>
-                  </div>
-                </div>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-                  <div>
-                    <label style="display:block;font-size:0.82rem;font-weight:600;color:var(--ink-700);margin-bottom:4px;">Area (m²)</label>
-                    <input id="njArea" type="number" min="1" step="1" value="20" style="width:100%;padding:10px 12px;border:1.5px solid var(--ink-300);border-radius:9px;font-size:0.94rem;font-family:inherit;" />
-                  </div>
-                  <div>
-                    <label style="display:block;font-size:0.82rem;font-weight:600;color:var(--ink-700);margin-bottom:4px;">Quoted total (GHS) <span style="color:var(--red);">*</span></label>
-                    <input id="njAmount" type="number" min="0" step="50" placeholder="3500" style="width:100%;padding:10px 12px;border:1.5px solid var(--ink-300);border-radius:9px;font-size:0.94rem;font-family:inherit;" />
-                  </div>
-                </div>
-                <div>
-                  <label style="display:block;font-size:0.82rem;font-weight:600;color:var(--ink-700);margin-bottom:4px;">Tags <span class="small" style="color:var(--ink-500);font-weight:400;">(comma-separated, used for skill matching)</span></label>
-                  <input id="njTags" type="text" placeholder="Interior, Decorative" style="width:100%;padding:10px 12px;border:1.5px solid var(--ink-300);border-radius:9px;font-size:0.94rem;font-family:inherit;" />
-                </div>
-                <div style="background:var(--ink-50);border:1px solid var(--ink-100);border-radius:10px;padding:12px 14px;font-size:0.82rem;color:var(--ink-700);line-height:1.5;">
-                  ℹ️ Job lands at <strong>New</strong> with no Paint Master assigned. Use the kanban card to pick a Master and Dispatch.
-                </div>
-              </div>
-            </div>
-            <div class="flex-between" style="padding:16px 20px;border-top:1px solid var(--ink-100);">
-              <button class="btn btn-ghost" onclick="closeJob()">Cancel</button>
-              <button class="btn btn-primary" onclick="submitNewJob()">Add to board</button>
-            </div>
-          </div>
-        </div>
-      `;
-      // Keep the end-date input in sync with start + duration. The end date
-      // is editable indirectly (change duration); we don't want the dispatcher
-      // free-typing an end date that doesn't match the day count.
-      const recalcEndDate = () => {
-        const start = document.getElementById('njDate').value;
-        const dur   = Math.max(1, parseInt(document.getElementById('njDuration').value, 10) || 1);
-        if (!start) return;
-        const d = new Date(start);
-        d.setDate(d.getDate() + dur - 1);
-        document.getElementById('njEndDate').value = d.toISOString().slice(0, 10);
-      };
-      document.getElementById('njDate').addEventListener('input', recalcEndDate);
-      document.getElementById('njDuration').addEventListener('input', recalcEndDate);
-      recalcEndDate();
-      setTimeout(() => document.getElementById('njCustomer').focus(), 30);
-    }
-
-    function submitNewJob() {
-      const customer = document.getElementById('njCustomer').value.trim();
-      const service  = document.getElementById('njService').value;
-      const address  = document.getElementById('njAddress').value.trim();
-      const city     = document.getElementById('njCity').value;
-      const date     = document.getElementById('njDate').value;
-      const duration = Math.max(1, parseInt(document.getElementById('njDuration').value, 10) || 1);
-      const endDate  = document.getElementById('njEndDate').value;
-      const window_  = document.getElementById('njWindow').value;
-      const area     = parseFloat(document.getElementById('njArea').value) || 0;
-      const amount   = parseFloat(document.getElementById('njAmount').value) || 0;
-      const tagsRaw  = document.getElementById('njTags').value.trim();
-
-      if (!customer) { toast('Customer name is required.', 'warn'); return; }
-      if (!address)  { toast('Address is required.', 'warn'); return; }
-      if (!amount)   { toast('Quoted total is required.', 'warn'); return; }
-
-      const tags = tagsRaw ? tagsRaw.split(',').map(s => s.trim()).filter(Boolean) : [];
-      // Generate a fresh PM- ref that doesn't collide with existing rows.
-      const used = new Set(getStore().jobs.map(j => j.ref));
-      let ref;
-      do { ref = 'PM-' + (480000 + Math.floor(Math.random() * 99999)); } while (used.has(ref));
-
-      const newJob = {
-        id: 'j' + Math.random().toString(36).slice(2, 8),
-        ref, customer, service, area, amount,
-        stage: 'new',
-        assignedTo: null,
-        date,                      // start date (ISO yyyy-mm-dd)
-        endDate: endDate || date,  // end date (ISO yyyy-mm-dd)
-        durationDays: duration,    // explicit count, used by calendars + scheduling
-        window: window_,
-        address: address + (city && !address.includes(city) ? ', ' + city : ''),
-        city, tags,
-      };
-      mutate(store => { store.jobs.unshift(newJob); });
-      // Best-effort POST.
-      try {
-        fetch('/api/admin/jobs', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (pmAuth.token() || '') },
-          body: JSON.stringify(newJob)
-        }).catch(() => { /* offline */ });
-      } catch (e) { /* silent */ }
-      // Surface to the activity bus.
-      if (typeof pmActivity !== 'undefined') {
-        pmActivity.emit({
-          kind: 'booking',
-          title: `New job · ${ref}`,
-          sub: `${service} · ${customer} · ${fmtGHS(amount)}`,
-          source: { role: 'admin', name: (typeof pmAuth!=='undefined' && pmAuth.user()?.name) || 'Admin' }
-        });
-      }
-      closeJob();
-      toast(`${ref} added at New — assign a Master next.`);
-      render();
-    }
-
+    // ---- CSV export ------------------------------------------------------
     function exportCSV() {
-      const s = getStore();
-      const header = ['ref','customer','service','area','amount','stage','assignedTo','date','window','address'];
-      const rows = s.jobs.map(j => header.map(k => {
-        const v = k === 'assignedTo' ? (artisanById(j.assignedTo)?.name || '') : (j[k] ?? '');
-        return `"${String(v).replace(/"/g,'""')}"`;
-      }).join(','));
+      const header = ['ref','customer','service','area','amount','stage','master','date','address'];
+      const rows = board.jobs.map(j => {
+        const a = artisanById(j.assignedTo);
+        const vals = [
+          j.ref, j.customer, j.service, j.area, j.amount,
+          (BOARD_STAGE_LABEL[j.stage] || j.stage),
+          a ? a.name : (j.painterName || ''),
+          j.date, j.address,
+        ];
+        return vals.map(v => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`).join(',');
+      });
       const csv = [header.join(','), ...rows].join('\n');
-      const blob = new Blob([csv], { type:'text/csv' });
+      const blob = new Blob([csv], { type: 'text/csv' });
       const url = URL.createObjectURL(blob);
-      const a = document.createElement('a'); a.href = url; a.download = 'paintmasters-jobs.csv'; a.click();
+      const a = document.createElement('a');
+      a.href = url; a.download = 'paintmasters-jobs.csv'; a.click();
       URL.revokeObjectURL(url);
-      toast('CSV exported');
+      notify('CSV exported');
     }
 
-    // Deep-link: if hash matches a job id, auto-open
-    if (location.hash) {
-      const id = location.hash.slice(1);
-      setTimeout(() => { if (getStore().jobs.find(j => j.id === id)) openJob(id); }, 50);
+    // ---- boot ------------------------------------------------------------
+    async function init() {
+      await loadBoard();
+      // Deep-link: if the hash matches a job id, auto-open its modal.
+      if (location.hash) {
+        const id = decodeURIComponent(location.hash.slice(1));
+        if (board.jobs.find(j => String(j.id) === id)) openJob(id);
+      }
     }
-
-    render();
+    init();
   </script>
 </body>
 </html>

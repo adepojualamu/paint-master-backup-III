@@ -67,6 +67,12 @@ const config = {
     provider: optional('EMAIL_PROVIDER', ''),     // resend | sendgrid | mailgun | ''
     apiKey:   optional('EMAIL_API_KEY', ''),
     from:     optional('EMAIL_FROM', 'no-reply@paintgh.com'),
+    fromName: optional('EMAIL_FROM_NAME', 'Paint Masters'),
+    // 'stub' forces no real HTTP calls even when credentials are present (CI / demos).
+    mode:     optional('EMAIL_MODE', ''),
+    // Mailgun only — required when provider === 'mailgun'.
+    mailgunDomain:  optional('MAILGUN_DOMAIN', ''),
+    mailgunBaseUrl: optional('MAILGUN_BASE_URL', 'https://api.mailgun.net'),
   },
   uploads: {
     driver:    optional('UPLOADS_DRIVER', 'local'),  // local | s3 | r2

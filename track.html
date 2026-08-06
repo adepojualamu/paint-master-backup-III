@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="en">
 <head>
+  <meta name="pm-mode" content="production">
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="icon" type="image/png" href="assets/img/favicon.png" />
@@ -337,6 +338,49 @@
       <div class="track-wrap">
         <!-- TIMELINE + PROJECT DETAILS -->
         <div>
+          <!-- Live booking status banner. Renders when this booking carries
+               a backend bookingId (set by booking.html when POST /api/bookings
+               succeeded). Polls GET /api/bookings/:id every 10s and surfaces
+               the canonical status — assigned painter, stage transitions,
+               cancellations — without touching the demo-preview chip behaviour
+               below it. -->
+          <div class="card" id="bookingStatusCard" style="display:none;background:linear-gradient(180deg,#F7FAFD,#FFFFFF);">
+            <div class="flex-between">
+              <div>
+                <span class="small" style="color:var(--ink-500);">Live status</span>
+                <h3 class="mt-0" id="bsHeadline" style="margin-bottom:2px;">Waiting for the dispatcher…</h3>
+                <p id="bsBody" class="small" style="color:var(--ink-700);margin:0;max-width:60ch;">
+                  Your booking is in the queue. We'll show the assigned Paint Master here as soon as one is picked.
+                </p>
+              </div>
+              <span class="badge" id="bsBadge" style="font-weight:700;letter-spacing:0.06em;text-transform:uppercase;background:var(--ink-100);color:var(--navy-900);">Pending</span>
+            </div>
+            <div id="bsPainter" style="display:none;margin-top:14px;padding-top:14px;border-top:1px solid var(--ink-100);">
+              <div class="small" style="color:var(--ink-500);">Assigned Paint Master</div>
+              <strong id="bsPainterName" style="display:block;font-size:1rem;color:var(--navy-900);margin-top:4px;">—</strong>
+              <small id="bsPainterMeta" style="color:var(--ink-500);"></small>
+            </div>
+          </div>
+
+          <!-- Volume review status card. Only renders when this booking carries
+               a backend quote ID (set by booking.html when POST /api/quotes
+               succeeds). Polls GET /api/quotes/:id every 10s until the
+               dispatcher confirms or rejects; visually states each stage and
+               lists the line items the dispatcher signed off on. -->
+          <div class="card" id="volumeStatusCard" style="display:none;">
+            <div class="flex-between">
+              <h3 class="mt-0" style="margin-bottom:4px;">🪣 Paint volume review</h3>
+              <span class="badge" id="vrBadge" style="font-weight:700;letter-spacing:0.06em;text-transform:uppercase;">Pending</span>
+            </div>
+            <p id="vrSummary" class="small" style="color:var(--ink-500);margin:6px 0 14px;">
+              Checking with the dispatcher…
+            </p>
+            <div id="vrLines"><!-- Populated when status='confirmed' --></div>
+            <div class="small" id="vrFooter" style="color:var(--ink-500);margin-top:12px;">
+              Updates automatically · refreshing every 10 seconds.
+            </div>
+          </div>
+
           <div class="card">
             <h3 class="mt-0">Project details</h3>
             <div class="flex-between" style="border-top:1px solid var(--ink-100);padding-top:14px;">
@@ -1331,6 +1375,293 @@
         source: { role: 'customer', name: customerName }
       });
     }
+
+    // =================================================================
+    // Volume-review polling.
+    //
+    // booking.html stashes the live quoteId + initial volumeStatus into
+    // pm_booking_v1 when POST /api/quotes succeeds. We poll GET /api/quotes/:id
+    // every 10s and update the status card. Once the status flips to a
+    // terminal state (confirmed/rejected) we stop polling and stay rendered
+    // on the final state — the next visit re-reads from the backend on load.
+    // Silent failures (offline, file://): the card just keeps showing the
+    // last known state and a "Checking…" sub-line.
+    // =================================================================
+    (function volumeReviewPoll() {
+      const stored = (() => { try { return JSON.parse(localStorage.getItem('pm_booking_v1') || 'null'); } catch (_) { return null; } })();
+      const quoteId = stored && stored.quoteId;
+      if (!quoteId) return;     // nothing to poll for — old/demo booking
+
+      const card    = document.getElementById('volumeStatusCard');
+      const badge   = document.getElementById('vrBadge');
+      const summary = document.getElementById('vrSummary');
+      const lines   = document.getElementById('vrLines');
+      const footer  = document.getElementById('vrFooter');
+      if (!card) return;
+      card.style.display = 'block';
+
+      const POLL_MS = 10000;
+      let timer = null;
+      let terminal = false;
+
+      function authHeaders() {
+        const tok = (typeof pmAuth !== 'undefined' && pmAuth.token) ? pmAuth.token() : null;
+        return tok ? { 'Authorization': `Bearer ${tok}` } : {};
+      }
+      function fmt(n) {
+        try { return pmFormatGHS(n); }
+        catch { return 'GHS ' + Math.round(Number(n) || 0).toLocaleString(); }
+      }
+      function fmtTime(iso) {
+        if (!iso) return '';
+        try {
+          const d = new Date(iso);
+          return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })
+               + ' · ' + d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+        } catch { return iso; }
+      }
+
+      function renderLines(paint_lines) {
+        if (!Array.isArray(paint_lines) || !paint_lines.length) {
+          lines.innerHTML = '';
+          return;
+        }
+        const totals = paint_lines.reduce((a, l) => ({
+          litres:  a.litres  + (Number(l.litres_needed)  || 0),
+          buckets: a.buckets + (Number(l.buckets_needed) || 0),
+          cost:    a.cost    + (Number(l.cost_estimate)  || 0),
+        }), { litres: 0, buckets: 0, cost: 0 });
+        lines.innerHTML = `
+          <div style="overflow-x:auto;">
+            <table style="width:100%;border-collapse:collapse;font-size:0.86rem;">
+              <thead><tr>
+                <th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--ink-100);color:var(--ink-500);font-size:0.72rem;text-transform:uppercase;letter-spacing:0.06em;">Product</th>
+                <th style="text-align:right;padding:8px 10px;border-bottom:1px solid var(--ink-100);color:var(--ink-500);font-size:0.72rem;text-transform:uppercase;letter-spacing:0.06em;">Litres</th>
+                <th style="text-align:right;padding:8px 10px;border-bottom:1px solid var(--ink-100);color:var(--ink-500);font-size:0.72rem;text-transform:uppercase;letter-spacing:0.06em;">Buckets</th>
+                <th style="text-align:right;padding:8px 10px;border-bottom:1px solid var(--ink-100);color:var(--ink-500);font-size:0.72rem;text-transform:uppercase;letter-spacing:0.06em;">Material cost</th>
+              </tr></thead>
+              <tbody>
+                ${paint_lines.map(l => `
+                  <tr>
+                    <td style="padding:8px 10px;border-bottom:1px solid var(--ink-100);"><strong>${l.product_name || ('#' + l.paint_product_id)}</strong></td>
+                    <td style="padding:8px 10px;border-bottom:1px solid var(--ink-100);text-align:right;font-variant-numeric:tabular-nums;">${Number(l.litres_needed).toFixed(2)} L</td>
+                    <td style="padding:8px 10px;border-bottom:1px solid var(--ink-100);text-align:right;font-variant-numeric:tabular-nums;">${l.buckets_needed} × ${l.bucket_size_litres} L</td>
+                    <td style="padding:8px 10px;border-bottom:1px solid var(--ink-100);text-align:right;font-variant-numeric:tabular-nums;">${fmt(l.cost_estimate)}</td>
+                  </tr>
+                `).join('')}
+                <tr>
+                  <td style="padding:10px;font-weight:700;color:var(--navy-900);">Total</td>
+                  <td style="padding:10px;text-align:right;font-weight:700;color:var(--navy-900);font-variant-numeric:tabular-nums;">${totals.litres.toFixed(2)} L</td>
+                  <td style="padding:10px;text-align:right;font-weight:700;color:var(--navy-900);font-variant-numeric:tabular-nums;">${totals.buckets}</td>
+                  <td style="padding:10px;text-align:right;font-weight:700;color:var(--navy-900);font-variant-numeric:tabular-nums;">${fmt(totals.cost)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>`;
+      }
+
+      function applyStatus(q) {
+        const status = q && q.volume_status;
+        const lines_arr = (q && q.paint_lines) || [];
+        const styleByStatus = {
+          pending_review: { badge: 'Pending review', bg: '#fff5d7', fg: '#8b5a00',
+                            text: `A dispatcher is reviewing the litres and bucket count on this quote. We'll lock the final price as soon as they sign off.` },
+          confirmed:      { badge: 'Confirmed',     bg: '#d6f1d8', fg: '#1a5a23',
+                            text: `Dispatcher confirmed the paint volume on ${fmtTime(q.volume_confirmed_at)}. Final pricing is locked.` },
+          rejected:       { badge: 'Needs rework',  bg: '#fbdada', fg: '#8a1414',
+                            text: `Dispatcher flagged the paint volume on ${fmtTime(q.volume_confirmed_at)}. We'll be in touch by phone or email to confirm the right quantities.` },
+          not_required:   { badge: 'No volume gate', bg: '#e8eef5', fg: '#344a66',
+                            text: `No paint lines on this quote — nothing to review.` },
+        };
+        const cfg = styleByStatus[status] || styleByStatus.pending_review;
+        badge.textContent      = cfg.badge;
+        badge.style.background = cfg.bg;
+        badge.style.color      = cfg.fg;
+        summary.textContent    = cfg.text;
+
+        // Only show the line table once the dispatcher has actually
+        // confirmed — keeps the pending view focused on "waiting".
+        renderLines(status === 'confirmed' ? lines_arr : []);
+
+        if (status === 'confirmed' || status === 'rejected' || status === 'not_required') {
+          terminal = true;
+          footer.textContent = 'No more updates expected for this stage.';
+          if (timer) { clearTimeout(timer); timer = null; }
+        }
+
+        // Persist the latest known status so the next page-load already
+        // shows the right thing while the first poll is in flight.
+        try {
+          const s = JSON.parse(localStorage.getItem('pm_booking_v1') || '{}');
+          s.volumeStatus = status;
+          if (q && q.volume_confirmed_at) s.volumeConfirmedAt = q.volume_confirmed_at;
+          localStorage.setItem('pm_booking_v1', JSON.stringify(s));
+        } catch (_) {}
+      }
+
+      async function tick() {
+        try {
+          const res = await fetch(`/api/quotes/${encodeURIComponent(quoteId)}`, { headers: authHeaders() });
+          if (!res.ok) throw new Error('HTTP ' + res.status);
+          const j = await res.json();
+          if (j && j.quote) applyStatus(j.quote);
+        } catch (e) {
+          // Network or auth blip — leave the existing card state intact and
+          // try again on the next tick.
+          footer.textContent = `Last refresh failed (${e.message}). Trying again in a moment…`;
+        }
+        if (!terminal) timer = setTimeout(tick, POLL_MS);
+      }
+
+      // Render the cached status immediately so the customer isn't staring
+      // at "Checking…" for 10s on every page load.
+      if (stored.volumeStatus) {
+        applyStatus({ volume_status: stored.volumeStatus, volume_confirmed_at: stored.volumeConfirmedAt, paint_lines: [] });
+      }
+      tick();
+    })();
+
+    // =================================================================
+    // Booking-status polling.
+    //
+    // Separate from the volume poll — different endpoint, different cadence
+    // expectations, different terminal states. Fires only when booking.html
+    // stashed a backend bookingId. We poll GET /api/bookings/:id every 10s
+    // and surface:
+    //   - the painter assignment (the moment dispatcher picks one)
+    //   - the booking stage transitions (pending_assignment → pending →
+    //     confirmed → in_progress → completed, plus cancelled)
+    // The demo stage-chip preview below is untouched.
+    // =================================================================
+    (function bookingStatusPoll() {
+      const stored = (() => { try { return JSON.parse(localStorage.getItem('pm_booking_v1') || 'null'); } catch (_) { return null; } })();
+      const bookingId = stored && stored.bookingId;
+      if (!bookingId) return;
+
+      const card        = document.getElementById('bookingStatusCard');
+      const badge       = document.getElementById('bsBadge');
+      const headline    = document.getElementById('bsHeadline');
+      const body        = document.getElementById('bsBody');
+      const painterBox  = document.getElementById('bsPainter');
+      const painterName = document.getElementById('bsPainterName');
+      const painterMeta = document.getElementById('bsPainterMeta');
+      if (!card) return;
+      card.style.display = 'block';
+
+      const POLL_MS = 10000;
+      let timer = null;
+      let terminal = false;
+
+      // Maps backend booking.status → customer-facing copy + badge colour.
+      // Keeping the styles inline here so this block stays self-contained.
+      const STATUS_VIEW = {
+        pending_assignment: {
+          label:    'Awaiting dispatch',
+          bg:       'var(--ink-100)', fg: 'var(--navy-900)',
+          headline: 'Looking for a Paint Master.',
+          body:     'A dispatcher is reviewing your booking and matching you with the right person. We aim to assign within 24 hours, usually much faster.',
+        },
+        pending: {
+          label:    'Painter assigned',
+          bg:       '#fff5d7', fg: '#8b5a00',
+          headline: 'Painter assigned — awaiting confirmation.',
+          body:     'Your Paint Master has 2 hours to confirm. We\'ll notify you the moment they do.',
+        },
+        confirmed: {
+          label:    'Confirmed',
+          bg:       '#d6f1d8', fg: '#1a5a23',
+          headline: 'Locked in — see you on the day.',
+          body:     'Your Paint Master has confirmed. Same number you\'ll see in your tracker on the day.',
+        },
+        in_progress: {
+          label:    'In progress',
+          bg:       'rgba(46,112,201,0.14)', fg: '#1B4B91',
+          headline: 'Job in progress.',
+          body:     'Your Paint Master is on site. Check below for live milestone updates.',
+        },
+        qa_pending: {
+          label:    'Awaiting QA',
+          bg:       '#fff5d7', fg: '#8b5a00',
+          headline: 'Painter done — QA inspecting.',
+          body:     'Your Paint Master has wrapped up. A QA inspector is reviewing photos and milestones before we lock in the warranty and release the final payout. Usually within 48 hours.',
+        },
+        completed: {
+          label:    'Completed',
+          bg:       '#d6f1d8', fg: '#1a5a23',
+          headline: 'Job completed.',
+          body:     'Painting wrapped. The 12-month warranty starts today. We\'ll release the rest of the deposit once QA signs off.',
+        },
+        cancelled: {
+          label:    'Cancelled',
+          bg:       '#fbdada', fg: '#8a1414',
+          headline: 'Booking cancelled.',
+          body:     'This booking was cancelled. Any eligible refund has been issued — check your tracker for details.',
+        },
+      };
+      const TERMINAL = new Set(['completed', 'cancelled']);
+
+      function authHeaders() {
+        const tok = (typeof pmAuth !== 'undefined' && pmAuth.token) ? pmAuth.token() : null;
+        return tok ? { 'Authorization': `Bearer ${tok}` } : {};
+      }
+
+      function apply(b) {
+        const status = (b && b.status) || 'pending_assignment';
+        const view   = STATUS_VIEW[status] || STATUS_VIEW.pending_assignment;
+        badge.textContent       = view.label;
+        badge.style.background  = view.bg;
+        badge.style.color       = view.fg;
+        headline.textContent    = view.headline;
+        body.textContent        = view.body;
+
+        if (b && b.painter_name) {
+          painterBox.style.display = 'block';
+          painterName.textContent  = b.painter_name;
+          const bits = [];
+          if (b.painter_city) bits.push(b.painter_city);
+          if (b.painter_id)   bits.push('Master ID ' + b.painter_id);
+          painterMeta.textContent = bits.join(' · ');
+        } else {
+          painterBox.style.display = 'none';
+        }
+
+        // Cache so next page load renders the right state instantly.
+        try {
+          const s = JSON.parse(localStorage.getItem('pm_booking_v1') || '{}');
+          s.bookingStatus       = status;
+          if (b && b.painter_name) s.painterName = b.painter_name;
+          if (b && b.painter_id)   s.painterId   = b.painter_id;
+          localStorage.setItem('pm_booking_v1', JSON.stringify(s));
+        } catch (_) {}
+
+        if (TERMINAL.has(status)) {
+          terminal = true;
+          if (timer) { clearTimeout(timer); timer = null; }
+        }
+      }
+
+      async function tick() {
+        try {
+          const res = await fetch(`/api/bookings/${encodeURIComponent(bookingId)}`, { headers: authHeaders() });
+          if (!res.ok) throw new Error('HTTP ' + res.status);
+          const j = await res.json();
+          if (j && j.booking) apply(j.booking);
+        } catch (e) {
+          // Silent — next tick retries. The card just shows the last known state.
+        }
+        if (!terminal) timer = setTimeout(tick, POLL_MS);
+      }
+
+      // Hydrate from cache for instant render.
+      if (stored.bookingStatus) {
+        apply({
+          status:       stored.bookingStatus,
+          painter_name: stored.painterName,
+          painter_id:   stored.painterId,
+        });
+      }
+      tick();
+    })();
   </script>
 </body>
 </html>

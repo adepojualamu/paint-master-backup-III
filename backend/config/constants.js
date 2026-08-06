@@ -28,6 +28,11 @@ module.exports = {
   // Validation bounds
   MIN_RATE_PER_DAY:        50,     // GHS
   MAX_RATE_PER_DAY:        2000,
+  // Server-side default day-rate used when an anonymous customer creates a
+  // quote without an assigned painter. Critical: the customer-supplied
+  // rate_per_day is NEVER trusted by the quote create path; if no painter
+  // is assigned yet, we use this default instead. See routes/quotes.js.
+  DEFAULT_QUOTE_RATE_PER_DAY: 500,
   MIN_AREA_SQM:            5,
   MAX_AREA_SQM:            10000,
   MIN_DURATION_DAYS:       1,
@@ -46,7 +51,16 @@ module.exports = {
   // Roles / statuses (centralised so we never typo a string)
   ROLES:           ['customer', 'painter', 'admin'],
   ADMIN_SUB_ROLES: ['super_admin', 'dispatcher', 'qa', 'finance', 'inventory_manager'],
-  BOOKING_STATUS:  ['pending', 'confirmed', 'in_progress', 'completed', 'cancelled'],
+  // Booking lifecycle (in order):
+  //   pending_assignment  customer booked, no painter yet
+  //   pending             painter assigned, awaiting their confirmation
+  //   confirmed           painter said yes, locked in
+  //   in_progress         painter on site
+  //   qa_pending          painter says done, QA still needs to sign off
+  //   completed           QA signed off, warranty starts, payouts release,
+  //                       reservations get consumed
+  //   cancelled           customer/admin pulled the plug; reservations released
+  BOOKING_STATUS:  ['pending_assignment', 'pending', 'confirmed', 'in_progress', 'qa_pending', 'completed', 'cancelled'],
   PAYMENT_STATUS:  ['pending', 'paid', 'refunded', 'partial_refund', 'failed'],
   PAYMENT_METHODS: ['momo', 'card', 'onsite'],
 

@@ -12,9 +12,12 @@ const { body, validationResult } = require('express-validator');
 const db      = require('../database');
 const { protect } = require('../middleware/auth');
 
+const config = require('../config');
 const router  = express.Router();
-const JWT_SECRET   = process.env.JWT_SECRET   || 'paintgh_dev_secret';
-const JWT_EXPIRES  = process.env.JWT_EXPIRES_IN || '7d';
+// Typed config throws at boot if JWT_SECRET is unset, so there's no need
+// for (and no place for) a hardcoded fallback here.
+const JWT_SECRET   = config.jwt.secret;
+const JWT_EXPIRES  = config.jwt.expiresIn;
 
 // Helper: sign token
 function signToken(user) {
@@ -78,22 +81,33 @@ router.post('/register', [
 
 // ─────────────────────────────────────────
 // POST /api/auth/login
-// Body: { phone, password }
+// Body: { phone?, email?, password }   — phone OR email must be present.
 // ─────────────────────────────────────────
 router.post('/login', [
-  body('phone').trim().notEmpty().withMessage('Phone is required'),
+  body('phone').optional({ checkFalsy: true }).trim().isString(),
+  body('email').optional({ checkFalsy: true }).trim().toLowerCase().isEmail().withMessage('Enter a valid email'),
   body('password').notEmpty().withMessage('Password is required'),
+  // Either-or check.
+  body().custom((b) => {
+    if (!b || (!b.phone && !b.email)) throw new Error('Phone or email is required.');
+    return true;
+  }),
 ], (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     return res.status(400).json({ success: false, errors: errors.array() });
   }
 
-  const { phone, password } = req.body;
+  const { phone, email, password } = req.body;
 
-  const user = db.prepare('SELECT * FROM users WHERE phone = ?').get(phone);
+  // Resolve the user by whichever identifier the caller gave us. Email lookup
+  // is case-insensitive (the validator already lowercased it).
+  const user = phone
+    ? db.prepare('SELECT * FROM users WHERE phone = ?').get(phone)
+    : db.prepare('SELECT * FROM users WHERE LOWER(email) = LOWER(?)').get(email);
+
   if (!user || !bcrypt.compareSync(password, user.password)) {
-    return res.status(401).json({ success: false, message: 'Incorrect phone number or password.' });
+    return res.status(401).json({ success: false, message: 'Incorrect credentials.' });
   }
 
   const token = signToken(user);

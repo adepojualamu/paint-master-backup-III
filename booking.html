@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="en">
 <head>
+  <meta name="pm-mode" content="production">
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="icon" type="image/png" href="assets/img/favicon.png" />
@@ -103,6 +104,15 @@
             <div class="field">
               <label>Anything the Master should know? (optional)</label>
               <textarea class="textarea" id="fNotes" rows="3" placeholder="Gate code, pets, key contacts, accessibility notes..."></textarea>
+            </div>
+
+            <div class="field">
+              <label>Photos of your space (optional)</label>
+              <p class="small" style="color:var(--ink-500);margin:-4px 0 8px;">
+                Add a few photos so your Paint Master knows the task ahead. JPG, PNG or WebP — up to 8.
+              </p>
+              <input class="input" type="file" id="fPhotos" accept="image/*" multiple />
+              <div id="fPhotoPreview" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;"></div>
             </div>
 
             <div class="flex-between mt-24">
@@ -228,8 +238,11 @@
             <div class="summary-row"><span>Area</span><strong id="bArea">—</strong></div>
             <div class="summary-row"><span>Labour</span><strong id="bLabour">—</strong></div>
             <div class="summary-row"><span>Materials</span><strong id="bMaterials">—</strong></div>
+            <div class="summary-row"><span>Subtotal (ex. VAT)</span><strong id="bSubtotal">—</strong></div>
             <div class="summary-row"><span>VAT (12.5%)</span><strong id="bVAT">—</strong></div>
+            <div class="summary-row" style="border-top:1px solid rgba(255,255,255,0.18); margin-top:6px; padding-top:8px; font-size:1.02rem;"><span>Total (incl. VAT)</span><strong id="bTotalRow">—</strong></div>
           </div>
+          <p class="small" style="margin:10px 0 0;color:rgba(255,255,255,0.6);">Prices include 12.5% VAT — the total is exactly what you'll be charged.</p>
 
           <p class="small" style="margin-top:16px;color:rgba(255,255,255,0.6);">Quote valid 14 days from creation.</p>
           <p><a href="quote.html" style="color:var(--gold-500);font-weight:600;">← Edit quote</a></p>
@@ -280,21 +293,29 @@
 
     // ---------- Populate summary from saved quote ----------
     function renderSummary() {
-      if (!saved || !saved.quote) {
+      // New canonical shape persists `pricing`; fall back to the legacy `quote`.
+      const p = saved && (saved.pricing || saved.quote);
+      if (!saved || !p) {
         document.getElementById('bService').innerHTML = '<em>No quote found. <a href="quote.html" style="color:var(--gold-500);">Start a new quote →</a></em>';
         return;
       }
-      const q = saved.quote;
-      document.getElementById('bTotal').innerHTML = pmFormatGHS(q.total) + ' <small>total</small>';
-      document.getElementById('bDeposit').textContent = pmFormatGHS(q.total * 0.4);
+      const area = saved.area_sqm != null ? Number(saved.area_sqm)
+                   : (saved.quote && saved.quote.area) || 0;
+      const svcName = (saved.quote && saved.quote.svc && saved.quote.svc.name)
+                      || saved.service || 'Painting';
+      document.getElementById('bTotal').innerHTML = pmFormatGHS(p.total) + ' <small>incl. VAT</small>';
+      document.getElementById('bDeposit').textContent = pmFormatGHS(p.total * 0.4);
       document.getElementById('bService').innerHTML = `
-        <strong>${q.svc.name}</strong><br/>
-        <span style="color:rgba(255,255,255,0.7);">${saved.rooms} room(s) · ${saved.tier} paint · ${saved.finish} finish</span>
+        <strong>${svcName}</strong><br/>
+        <span style="color:rgba(255,255,255,0.7);">${saved.rooms || 1} room(s) · ${saved.tier || 'standard'} paint · ${saved.finish || 'satin'} finish</span>
       `;
-      document.getElementById('bArea').textContent = q.area.toFixed(1) + ' m²';
-      document.getElementById('bLabour').textContent = pmFormatGHS(q.labour);
-      document.getElementById('bMaterials').textContent = pmFormatGHS(q.materials);
-      document.getElementById('bVAT').textContent = pmFormatGHS(q.vat);
+      document.getElementById('bArea').textContent = area.toFixed(1) + ' m²';
+      document.getElementById('bLabour').textContent = pmFormatGHS(p.labour);
+      document.getElementById('bMaterials').textContent = pmFormatGHS(p.materials);
+      const bExVat = (p.total_ex_vat != null) ? p.total_ex_vat : (p.total - p.vat);
+      document.getElementById('bSubtotal').textContent = pmFormatGHS(bExVat);
+      document.getElementById('bVAT').textContent = pmFormatGHS(p.vat);
+      document.getElementById('bTotalRow').textContent = pmFormatGHS(p.total);
 
       document.getElementById('cDate').textContent = new Date().toLocaleDateString('en-GB', { day:'numeric', month:'long', year:'numeric' });
       document.getElementById('bRef').textContent = book.ref;
@@ -422,50 +443,24 @@
 
     // ---------- Backend submission ----------
     //
-    // Translate the client-side quote state into the /api/quotes payload and
-    // POST it. The backend's calculateQuote() uses a simpler model (per-sqm
-    // rate × area + day-rate × days) so the persisted total will not match
-    // what the customer saw in the quote builder — we keep the client total
-    // as the displayed price and let the backend store its own breakdown
-    // for accounting. The win here is that paintLines flow through, the
-    // quote gets a real ID, and the dispatcher's Volume Reviews screen
-    // immediately picks it up.
+    // Translate the saved quote into the /api/quotes payload and POST it. Since
+    // the reconciliation, quote.html persists the CANONICAL inputs (already
+    // mapped to a backend service + derived area/duration) and the price the
+    // customer saw came from the same engine the server charges with — so the
+    // persisted total now matches what they saw. The day-rate is deliberately
+    // NOT sent: the server decides it (painter rate, or the rate card default).
 
-    // Map a client SERVICES id → one of the backend RATE_PER_SQM keys
-    // (Interior | Exterior | Commercial | Decorative | Waterproofing | Repaint).
-    function mapServiceToBackend(category, serviceId) {
-      if (category === 'commercial') return 'Commercial';
-      if (category === 'decorative') return 'Decorative';
-      if (category === 'specialty') {
-        // Waterproof and pool both lean on the waterproofing line; everything
-        // else in specialty maps cleanly to Exterior or Repaint.
-        if (serviceId === 'waterproof' || serviceId === 'pool')   return 'Waterproofing';
-        if (serviceId === 'roof'       || serviceId === 'fence')  return 'Exterior';
-        return 'Repaint';
-      }
-      // Residential — exterior façade is the only outdoor one.
-      if (serviceId === 'ext_facade') return 'Exterior';
-      return 'Interior';
-    }
-
-    // Derive a reasonable duration in days from area. One painter covers
-    // roughly 50 m² per working day at standard prep depth; clamp to 1..60.
-    function estimateDurationDays(areaSqm) {
-      const d = Math.max(1, Math.ceil(Number(areaSqm) / 50));
-      return Math.min(60, d);
-    }
-
-    // Build the POST /api/quotes payload from the saved state plus the
-    // booking-page form fields. paintLines pass through verbatim — they're
-    // already in the shape services/paintVolume.recordEstimate expects.
+    // Build the POST /api/quotes payload from the saved quote + booking-page
+    // form fields. Prefers the canonical fields; falls back to the older saved
+    // shape (category/serviceId + quote.area) for safety. Service mapping and
+    // duration derivation live in shared.js so this page can never diverge from
+    // the quote page.
     function buildQuotePayload() {
-      const q = saved && saved.quote ? saved.quote : {};
-      const service = mapServiceToBackend(saved.category, saved.serviceId);
-      const area    = Math.max(5, Math.round((q.area || 5) * 10) / 10);
-      const days    = estimateDurationDays(area);
-      // Day rate is implied — split the labour figure across the days. Floor
-      // at the backend's MIN_RATE_PER_DAY (50) and cap at MAX (2000).
-      const dayRate = Math.min(2000, Math.max(50, Math.round(((q.labour || 200) / days))));
+      const service = saved.service || pmMapServiceToBackend(saved.category, saved.serviceId);
+      const rawArea = (saved.area_sqm != null ? saved.area_sqm
+                       : (saved.quote && saved.quote.area)) || 5;
+      const area = Math.max(5, Math.round(Number(rawArea) * 10) / 10);
+      const days = saved.duration_days || pmEstimateDurationDays(area);
 
       const cityField = document.getElementById('fCity');
       const city = cityField ? cityField.value.trim() : null;
@@ -474,7 +469,7 @@
         service,
         area_sqm:           area,
         duration_days:      days,
-        rate_per_day:       dayRate,
+        // rate_per_day intentionally omitted — server-determined.
         materials_included: true,
         city,
         address: document.getElementById('fAddress').value.trim() || null,
@@ -511,6 +506,106 @@
       }
     }
 
+    // Build the POST /api/bookings payload from the quote that was just
+    // persisted upstream. quote_id ties the booking to its source quote so
+    // the backend can pull the locked-in price (the customer is charged what
+    // they saw, not whatever calculateQuote would re-derive on the server).
+    function buildBookingPayload(quoteId) {
+      const apiPayload = buildQuotePayload();
+      const address  = document.getElementById('fAddress').value.trim();
+      const cityField = document.getElementById('fCity');
+      const city = cityField ? cityField.value.trim() : '';
+      const fullAddr = city ? `${address}, ${city}` : address;
+      return {
+        quote_id:           quoteId,
+        service:            apiPayload.service,
+        address:            fullAddr || address || '—',
+        job_date:           book.date,
+        duration_days:      apiPayload.duration_days,
+        area_sqm:           apiPayload.area_sqm,
+        payment_method:     ({ momo:'momo', card:'card', bank:'onsite' })[book.payment] || 'momo',
+        materials_included: true,
+        notes:              document.getElementById('fNotes').value.trim() || null,
+      };
+    }
+
+    // POST /api/bookings with the same 6-second timeout pattern.
+    async function postBooking(payload) {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 6000);
+      try {
+        const token = (typeof pmAuth !== 'undefined' && pmAuth.token) ? pmAuth.token() : null;
+        const res = await fetch('/api/bookings', {
+          method:  'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+          },
+          body:    JSON.stringify(payload),
+          signal:  ctrl.signal,
+        });
+        const j = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          const msg = j && j.message ? j.message : `HTTP ${res.status}`;
+          throw new Error(msg);
+        }
+        return j;
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+
+    // --- Customer space photos (step 2) -----------------------------------
+    // Photos are held in memory as File objects and uploaded after the quote
+    // is persisted (in confirmBooking), once we have a quote id to attach
+    // them to. The quote flow stays on one page, so the File objects survive
+    // across steps without needing localStorage.
+    const spacePhotos = [];
+    const fPhotosInput = document.getElementById('fPhotos');
+    if (fPhotosInput) {
+      fPhotosInput.addEventListener('change', e => {
+        for (const f of Array.from(e.target.files || [])) {
+          if (spacePhotos.length >= 8) break;
+          if (!/^image\//.test(f.type)) continue;
+          spacePhotos.push(f);
+        }
+        e.target.value = '';   // let the customer add more / re-pick
+        renderPhotoPreview();
+      });
+    }
+    function renderPhotoPreview() {
+      const host = document.getElementById('fPhotoPreview');
+      if (!host) return;
+      host.innerHTML = spacePhotos.map((f, i) => {
+        const url = URL.createObjectURL(f);
+        return `<div style="position:relative;width:74px;height:74px;border-radius:8px;overflow:hidden;border:1px solid var(--ink-100);">
+            <img src="${url}" alt="space photo" style="width:100%;height:100%;object-fit:cover;" />
+            <button type="button" onclick="removeSpacePhoto(${i})" aria-label="Remove photo"
+                    style="position:absolute;top:3px;right:3px;width:20px;height:20px;border:none;border-radius:50%;
+                           background:rgba(11,31,58,0.82);color:#fff;font-size:0.72rem;line-height:1;cursor:pointer;">×</button>
+          </div>`;
+      }).join('');
+    }
+    function removeSpacePhoto(i) {
+      spacePhotos.splice(i, 1);
+      renderPhotoPreview();
+    }
+    // Upload the selected photos to the persisted quote. Best-effort — a
+    // failure here is logged but never blocks the booking confirmation.
+    async function uploadSpacePhotos(quoteId) {
+      if (!quoteId || !spacePhotos.length) return;
+      try {
+        const fd = new FormData();
+        spacePhotos.forEach(f => fd.append('photos', f));
+        const res = await fetch(`/api/quotes/${encodeURIComponent(quoteId)}/photos`, {
+          method: 'POST', body: fd,
+        });
+        if (!res.ok) console.warn('Space photo upload failed: HTTP', res.status);
+      } catch (e) {
+        console.warn('Space photo upload error:', e && e.message);
+      }
+    }
+
     async function confirmBooking() {
       // 1. Persist locally first — even if the backend POST below fails, the
       //    customer's local copy of the booking is intact and Track / My
@@ -518,48 +613,37 @@
       const payload = { ...book, quote: saved, bookedAt: Date.now() };
       try { localStorage.setItem('pm_booking_v1', JSON.stringify(payload)); } catch(e){}
 
-      // 2. Demo bridge — push into admin localStorage so the Job Board
-      //    surfaces a "New Request" card. Replaced by POST /api/bookings
-      //    once the bookings backend integration lands.
-      const q = saved && saved.quote ? saved.quote : {};
-      pmCreateAdminJob({
-        ref:      book.ref,
-        customer: document.getElementById('fName').value.trim() || 'Customer',
-        service:  q.svc ? q.svc.name : 'Painting',
-        area:     q.area || 0,
-        amount:   q.total || 0,
-        date:     book.date,
-        window:   book.window,
-        address:  document.getElementById('fAddress').value.trim() || '',
-        tags:     [q.svc ? q.svc.name.split(' ')[0] : 'Residential'],
-        payment_method: book.payment
-      });
-
-      // 3. POST to the backend so the quote + paint lines reach the
-      //    dispatcher's Volume Reviews queue. We swallow failures gracefully
-      //    — the customer-facing demo flow keeps working either way.
+      // 2. POST to the backend so the quote + paint lines reach the
+      //    dispatcher's Volume Reviews queue, and the booking itself lands
+      //    in the bookings table — where the admin Job Board now reads it
+      //    directly. We swallow failures gracefully; the customer-facing
+      //    flow keeps working either way (a local copy was saved in step 1).
       const lineCount = Array.isArray(saved && saved.paintLines) ? saved.paintLines.length : 0;
       const statusBox  = document.getElementById('volumeStatusBox');
       const statusBody = document.getElementById('volumeStatusBody');
       let bookingRefHtml = `<strong>Booking reference:</strong> ${book.ref}`;
 
+      let liveQuoteId   = null;
+      let liveBookingId = null;
+
       try {
+        // 2a — persist the quote (and any paint lines) first.
         const apiPayload = buildQuotePayload();
         const apiResult  = await postQuote(apiPayload);
 
         if (apiResult && apiResult.quote && apiResult.quote.id) {
-          bookingRefHtml = `
-            <strong>Booking reference:</strong> ${book.ref}<br/>
-            <strong>Quote ID:</strong> <span style="font-family:ui-monospace,Menlo,monospace;">${apiResult.quote.id}</span>`;
-          // Stash the live quote ID alongside the local booking so Track can
-          // pull volume_status updates as the dispatcher confirms / rejects.
+          liveQuoteId = apiResult.quote.id;
           try {
             const stored = JSON.parse(localStorage.getItem('pm_booking_v1') || '{}');
-            stored.quoteId       = apiResult.quote.id;
-            stored.volumeStatus  = apiResult.quote.volume_status;
+            stored.quoteId        = liveQuoteId;
+            stored.volumeStatus   = apiResult.quote.volume_status;
             stored.paintLineCount = apiResult.persisted_paint_lines || 0;
             localStorage.setItem('pm_booking_v1', JSON.stringify(stored));
           } catch (_) { /* ignore */ }
+
+          // Attach any space photos the customer added in step 2. Best-effort:
+          // a failed upload never blocks the booking.
+          await uploadSpacePhotos(liveQuoteId);
 
           if (lineCount > 0 && apiResult.quote.volume_status === 'pending_review') {
             statusBox.style.display = 'block';
@@ -570,10 +654,34 @@
             `;
           }
         }
+
+        // 2b — now persist the booking itself, linked back to the quote. If
+        // the user isn't authenticated, the backend will reject with 401 and
+        // we fall through to the local-only message; the success modal still
+        // opens with the local ref so the demo flow never feels broken.
+        if (liveQuoteId) {
+          try {
+            const bookingPayload = buildBookingPayload(liveQuoteId);
+            const bookingResult  = await postBooking(bookingPayload);
+            if (bookingResult && bookingResult.booking && bookingResult.booking.id) {
+              liveBookingId = bookingResult.booking.id;
+              try {
+                const stored = JSON.parse(localStorage.getItem('pm_booking_v1') || '{}');
+                stored.bookingId     = liveBookingId;
+                stored.bookingStatus = bookingResult.booking.status;
+                localStorage.setItem('pm_booking_v1', JSON.stringify(stored));
+              } catch (_) { /* ignore */ }
+            }
+          } catch (bookingErr) {
+            // Quote was persisted but booking insert failed — we still let
+            // the customer through. Dispatcher can manually create the
+            // booking from the quote_id if needed. Log so dev knows.
+            console.warn('Booking POST failed:', bookingErr && bookingErr.message);
+          }
+        }
       } catch (err) {
-        // Backend down or rejected the payload. The local booking is fine;
-        // just nudge the customer that final pricing may differ once a
-        // human looks at it. We do NOT block the success screen.
+        // Quote POST itself failed — backend may be down. Local copy keeps the
+        // demo flow working; the customer sees a "follow up" message.
         console.warn('Quote POST failed:', err && err.message);
         if (lineCount > 0) {
           statusBox.style.display = 'block';
@@ -585,6 +693,14 @@
         }
       }
 
+      // Build the reference panel — show whichever IDs we actually got.
+      bookingRefHtml = `<strong>Booking reference:</strong> ${book.ref}`;
+      if (liveBookingId) {
+        bookingRefHtml += `<br/><strong>Booking ID:</strong> <span style="font-family:ui-monospace,Menlo,monospace;">${liveBookingId}</span>`;
+      }
+      if (liveQuoteId) {
+        bookingRefHtml += `<br/><strong>Quote ID:</strong> <span style="font-family:ui-monospace,Menlo,monospace;">${liveQuoteId}</span>`;
+      }
       document.getElementById('bookingRef').innerHTML = bookingRefHtml;
       document.getElementById('successModal').classList.remove('hidden');
     }

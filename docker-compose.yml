@@ -1,0 +1,84 @@
+# ============================
+# Paint Masters — single-service compose.
+#
+# Usage on any platform (Windows / macOS / Linux):
+#   1. Copy .env.example to .env and set JWT_SECRET (and any provider keys).
+#   2. docker compose up -d
+#   3. Open http://localhost:3000
+#
+# The customer site lives at /, the admin console at /admin/, and the API
+# at /api. The SQLite database and uploaded photos persist in a named
+# Docker volume (paintmasters-data) so they survive container rebuilds.
+# ============================
+
+services:
+  paintmasters:
+    build: .
+    image: paintmasters:latest
+    container_name: paintmasters
+    restart: unless-stopped
+
+    ports:
+      - "3000:3000"
+
+    environment:
+      # Server
+      NODE_ENV: production
+      PORT: "3000"
+
+      # Auth — JWT_SECRET is REQUIRED; config/index.js throws on boot if
+      # it's empty, which is the safe default.
+      JWT_SECRET:      ${JWT_SECRET:?JWT_SECRET must be set in the host .env file}
+      JWT_EXPIRES_IN:  ${JWT_EXPIRES_IN:-7d}
+
+      # Persistent storage — both paths sit inside the named volume below
+      # so the SQLite DB and the uploads dir survive container restarts.
+      DB_PATH:           /data/paintgh.db
+      UPLOADS_LOCAL_DIR: /data/uploads
+      UPLOADS_DRIVER:    local
+
+      # CORS — comma-separated list of allowed origins for production.
+      # Leave blank for "allow all" (development-style).
+      CORS_ORIGINS:    ${CORS_ORIGINS:-}
+
+      # Rate limits (defaults track config/index.js).
+      RATE_LIMIT_WINDOW_MS: ${RATE_LIMIT_WINDOW_MS:-900000}
+      RATE_LIMIT_AUTH_MAX:  ${RATE_LIMIT_AUTH_MAX:-10}
+      RATE_LIMIT_API_MAX:   ${RATE_LIMIT_API_MAX:-120}
+
+      # --- Hubtel SMS --- (blank = record-only, no real send)
+      HUBTEL_CLIENT_ID:     ${HUBTEL_CLIENT_ID:-}
+      HUBTEL_CLIENT_SECRET: ${HUBTEL_CLIENT_SECRET:-}
+      HUBTEL_SENDER_ID:     ${HUBTEL_SENDER_ID:-PaintGH}
+      HUBTEL_MODE:          ${HUBTEL_MODE:-}
+
+      # --- Hubtel Receive Money / webhook --- (used by /api/payments)
+      HUBTEL_MERCHANT_ACCOUNT: ${HUBTEL_MERCHANT_ACCOUNT:-}
+      HUBTEL_CALLBACK_URL:     ${HUBTEL_CALLBACK_URL:-}
+      HUBTEL_CALLBACK_SECRET:  ${HUBTEL_CALLBACK_SECRET:-}
+
+      # --- Email --- (blank = record-only)
+      EMAIL_PROVIDER:   ${EMAIL_PROVIDER:-}
+      EMAIL_API_KEY:    ${EMAIL_API_KEY:-}
+      EMAIL_FROM:       ${EMAIL_FROM:-no-reply@paintgh.com}
+      EMAIL_FROM_NAME:  ${EMAIL_FROM_NAME:-Paint Masters}
+      EMAIL_MODE:       ${EMAIL_MODE:-}
+      MAILGUN_DOMAIN:   ${MAILGUN_DOMAIN:-}
+      MAILGUN_BASE_URL: ${MAILGUN_BASE_URL:-https://api.mailgun.net}
+
+      # Logging
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+
+    volumes:
+      - paintmasters-data:/data
+
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      start_period: 25s
+      retries: 3
+
+volumes:
+  paintmasters-data:
+    name: paintmasters-data

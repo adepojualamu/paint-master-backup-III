@@ -1,0 +1,353 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta name="pm-mode" content="production">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" type="image/png" href="../assets/img/favicon.png" />
+  <title>Finance — Paint Masters</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/admin.css" />
+  <style>
+    /* Finance sub-role dashboard. Three concerns:
+       1. Painter payouts — completed jobs awaiting MoMo transfer
+       2. Customer refunds — cancelled bookings awaiting refund
+       3. Summary KPIs across the last 30 days
+       Mirrors the visual language of volume-reviews and qa-reviews. */
+
+    /* KPI strip across the top */
+    .fin-kpis {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px;
+      margin-bottom: 22px;
+    }
+    @media (max-width: 1000px) { .fin-kpis { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 560px)  { .fin-kpis { grid-template-columns: 1fr; } }
+    .fin-kpi {
+      background: #fff; border: 1px solid var(--ink-100); border-radius: var(--radius);
+      padding: 16px 18px;
+    }
+    .fin-kpi .label {
+      font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em;
+      color: var(--ink-500); font-weight: 700;
+    }
+    .fin-kpi .value {
+      display: block; font-size: 1.6rem; font-weight: 700;
+      color: var(--navy-900); font-family: var(--font-display);
+      margin-top: 4px; font-variant-numeric: tabular-nums;
+    }
+    .fin-kpi .sub {
+      font-size: 0.78rem; color: var(--ink-500); margin-top: 2px;
+    }
+
+    .fin-tabs { display:flex; gap:8px; flex-wrap:wrap; margin: 8px 0 14px; }
+    .fin-tab {
+      background:#fff; border:1px solid var(--ink-100); border-radius:999px;
+      padding:6px 14px; font-size:0.85rem; font-weight:600; color:var(--ink-700);
+      cursor:pointer; transition: all 0.15s;
+    }
+    .fin-tab:hover { border-color: var(--navy-700); color: var(--navy-900); }
+    .fin-tab.active { background: var(--navy-900); color: #fff; border-color: var(--navy-900); }
+    .fin-tab .count {
+      display:inline-block; padding: 0 6px; border-radius: 999px;
+      font-size: 0.72rem; margin-left: 6px; background: var(--ink-100); color: var(--ink-700);
+    }
+    .fin-tab.active .count { background: rgba(255,255,255,0.15); color: inherit; }
+
+    .fin-card {
+      background: #fff; border: 1px solid var(--ink-100); border-radius: var(--radius-lg);
+      margin-bottom: 12px; overflow: hidden;
+    }
+    .fin-row {
+      display: grid; grid-template-columns: 1.4fr 1.1fr 1fr auto; gap: 14px;
+      align-items: center; padding: 14px 18px;
+    }
+    @media (max-width: 880px) { .fin-row { grid-template-columns: 1fr; } }
+    .fin-row .id { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.84rem; color: var(--ink-500); }
+    .fin-row h3 { margin: 4px 0; font-size: 1rem; }
+    .fin-row .small { font-size: 0.84rem; color: var(--ink-500); }
+    .fin-row strong { color: var(--navy-900); }
+    .fin-row .amount {
+      font-family: var(--font-display); font-weight: 700;
+      font-size: 1.2rem; color: var(--navy-900); font-variant-numeric: tabular-nums;
+    }
+    .fin-row .amount .sub {
+      display: block; font-size: 0.7rem; font-weight: 600;
+      color: var(--ink-500); letter-spacing: 0.06em; text-transform: uppercase;
+    }
+    .fin-pill {
+      display: inline-block; font-size: 0.66rem; font-weight: 800;
+      letter-spacing: 0.06em; text-transform: uppercase;
+      padding: 2px 8px; border-radius: 999px;
+    }
+    .fin-pill.full    { background:#d6f1d8; color:#1a5a23; }
+    .fin-pill.partial { background:#fff5d7; color:#8b5a00; }
+    .fin-pill.paid    { background:#d6f1d8; color:#1a5a23; }
+    .fin-empty { padding: 60px 20px; text-align: center; color: var(--ink-500); }
+    .fin-empty strong { display: block; color: var(--navy-900); font-size: 1.1rem; margin-bottom: 6px; }
+    .fin-loading { padding: 40px; text-align: center; color: var(--ink-500); font-size: 0.95rem; }
+  </style>
+</head>
+<body>
+  <div class="admin-shell">
+    <div id="admin-sidebar"></div>
+    <div class="admin-main">
+      <div id="admin-topbar"></div>
+      <div class="main">
+
+        <div class="page-head">
+          <div>
+            <h1>Finance</h1>
+            <div class="sub" style="color:var(--ink-500);">
+              Painter payouts on completed jobs, customer refunds on cancellations, and the last 30 days of revenue. Finance sub-role required to edit.
+            </div>
+          </div>
+          <div class="page-actions">
+            <button class="btn btn-outline" onclick="finLoad()">↺ Refresh</button>
+          </div>
+        </div>
+
+        <div class="fin-kpis" id="finKpis">
+          <div class="fin-kpi"><span class="label">Revenue (30d)</span><strong class="value" id="kpiRevenue">—</strong><span class="sub" id="kpiRevenueSub">&nbsp;</span></div>
+          <div class="fin-kpi"><span class="label">Platform fees</span><strong class="value" id="kpiFees">—</strong><span class="sub">our cut</span></div>
+          <div class="fin-kpi"><span class="label">Pending payouts</span><strong class="value" id="kpiPayouts">—</strong><span class="sub" id="kpiPayoutsSub">&nbsp;</span></div>
+          <div class="fin-kpi"><span class="label">Pending refunds</span><strong class="value" id="kpiRefunds">—</strong><span class="sub" id="kpiRefundsSub">&nbsp;</span></div>
+        </div>
+
+        <div class="fin-tabs" id="finTabs">
+          <button class="fin-tab active" data-tab="payouts_pending">Payouts owing <span class="count" id="tab-payouts_pending">0</span></button>
+          <button class="fin-tab"        data-tab="payouts_paid">Payouts paid <span class="count" id="tab-payouts_paid">0</span></button>
+          <button class="fin-tab"        data-tab="refunds_pending">Refunds owing <span class="count" id="tab-refunds_pending">0</span></button>
+          <button class="fin-tab"        data-tab="refunds_processed">Refunds processed <span class="count" id="tab-refunds_processed">0</span></button>
+        </div>
+
+        <div id="finQueue">
+          <div class="fin-loading">Loading…</div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <script src="../assets/shared.js"></script>
+  <script src="assets/admin-shared.js"></script>
+  <script>
+    adminMount('finance');
+
+    const state = { tab: 'payouts_pending', items: [], counts: {} };
+
+    function authHeaders() {
+      const t = (typeof pmAuth !== 'undefined' && pmAuth.token) ? pmAuth.token() : null;
+      return t ? { 'Authorization': `Bearer ${t}` } : {};
+    }
+    function fmtGHS(n) {
+      try { return pmFormatGHS(n); }
+      catch { return 'GHS ' + Math.round(Number(n) || 0).toLocaleString(); }
+    }
+    function esc(s) {
+      return String(s == null ? '' : s)
+        .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+        .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+    }
+    function fmtDate(iso) {
+      if (!iso) return '—';
+      try { return new Date(iso).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' }); }
+      catch { return iso; }
+    }
+
+    // Map tab name → backend URL.
+    function tabUrl(tab) {
+      switch (tab) {
+        case 'payouts_pending':   return '/api/finance/payouts?status=pending&limit=100';
+        case 'payouts_paid':      return '/api/finance/payouts?status=paid&limit=100';
+        case 'refunds_pending':   return '/api/finance/refunds?status=pending&limit=100';
+        case 'refunds_processed': return '/api/finance/refunds?status=processed&limit=100';
+      }
+    }
+
+    async function finLoad() {
+      document.getElementById('finQueue').innerHTML = '<div class="fin-loading">Loading…</div>';
+      try {
+        const [summaryRes, itemsRes] = await Promise.all([
+          fetch('/api/finance/summary',  { headers: authHeaders() }),
+          fetch(tabUrl(state.tab),       { headers: authHeaders() }),
+        ]);
+        if (!summaryRes.ok) throw new Error('Summary API HTTP ' + summaryRes.status);
+        if (!itemsRes.ok)   throw new Error('List API HTTP '   + itemsRes.status);
+        const s = await summaryRes.json();
+        const j = await itemsRes.json();
+        renderKpis(s.summary || {});
+        state.items = Array.isArray(j.items) ? j.items : [];
+        render();
+        loadAllCounts();
+      } catch (e) {
+        document.getElementById('finQueue').innerHTML = `
+          <div class="fin-empty">
+            <strong>Couldn't load.</strong>
+            <p>${esc(e.message)} — make sure the backend is running and you're signed in with the finance sub-role.</p>
+          </div>`;
+      }
+    }
+
+    function renderKpis(s) {
+      document.getElementById('kpiRevenue').textContent    = fmtGHS(s.revenue_30d);
+      document.getElementById('kpiRevenueSub').textContent = `${s.completed_count || 0} completed job${s.completed_count === 1 ? '' : 's'}`;
+      document.getElementById('kpiFees').textContent       = fmtGHS(s.platform_fees);
+      const pp = s.pending_payouts || {};
+      const pr = s.pending_refunds || {};
+      document.getElementById('kpiPayouts').textContent    = fmtGHS(pp.owed);
+      document.getElementById('kpiPayoutsSub').textContent = `${pp.count || 0} pending`;
+      document.getElementById('kpiRefunds').textContent    = fmtGHS(pr.gross);
+      document.getElementById('kpiRefundsSub').textContent = `${pr.count || 0} pending`;
+    }
+
+    // Pull row counts for every tab in parallel so the badges stay accurate
+    // regardless of which tab is currently active.
+    async function loadAllCounts() {
+      const tabs = ['payouts_pending','payouts_paid','refunds_pending','refunds_processed'];
+      await Promise.all(tabs.map(async t => {
+        try {
+          const r = await fetch(tabUrl(t), { headers: authHeaders() });
+          if (!r.ok) return;
+          const j = await r.json();
+          const el = document.getElementById('tab-' + t);
+          if (el) el.textContent = j.count || 0;
+        } catch (_) {}
+      }));
+    }
+
+    function render() {
+      const host = document.getElementById('finQueue');
+      if (!state.items.length) {
+        const empty = {
+          payouts_pending:   ['Inbox zero.', 'No painter payouts owing right now.'],
+          payouts_paid:      ['Nothing here yet.', 'Approved payouts show up here for the audit trail.'],
+          refunds_pending:   ['No refunds owing.', 'Cancelled bookings waiting for refund processing appear here.'],
+          refunds_processed: ['No processed refunds yet.', 'Processed refunds show up here for the audit trail.'],
+        }[state.tab] || ['Empty.', ''];
+        host.innerHTML = `<div class="fin-empty"><strong>${esc(empty[0])}</strong><p>${esc(empty[1])}</p></div>`;
+        return;
+      }
+      host.innerHTML = state.items.map(state.tab.startsWith('payouts') ? renderPayout : renderRefund).join('');
+    }
+
+    function renderPayout(b) {
+      const isPending = state.tab === 'payouts_pending';
+      return `
+        <article class="fin-card" data-id="${esc(b.id)}">
+          <div class="fin-row">
+            <div>
+              <span class="id">${esc(b.id)}</span>
+              <h3>${esc(b.service)}${b.area_sqm ? ` · ${Number(b.area_sqm).toFixed(0)} m²` : ''}</h3>
+              <div class="small">Customer <strong>${esc(b.customer_name || '—')}</strong></div>
+            </div>
+            <div>
+              <div class="small">Painter</div>
+              <strong>${esc(b.painter_name || '—')}</strong>
+              <div class="small">${esc(b.painter_phone || '')}</div>
+            </div>
+            <div class="amount">
+              ${fmtGHS(b.computed_payout)}
+              <span class="sub">Painter payout</span>
+            </div>
+            <div>
+              ${isPending
+                ? `<button class="btn btn-primary" onclick="finMarkPaid('${esc(b.id)}')">Mark paid</button>`
+                : `<span class="fin-pill paid">Paid ${fmtDate(b.painter_paid_at)}</span>`}
+            </div>
+          </div>
+        </article>`;
+    }
+
+    function renderRefund(b) {
+      const isPending = state.tab === 'refunds_pending';
+      const r = b.computed_refund || {};
+      return `
+        <article class="fin-card" data-id="${esc(b.id)}">
+          <div class="fin-row">
+            <div>
+              <span class="id">${esc(b.id)}</span>
+              <h3>${esc(b.service)}${b.area_sqm ? ` · ${Number(b.area_sqm).toFixed(0)} m²` : ''}</h3>
+              <div class="small">Customer <strong>${esc(b.customer_name || '—')}</strong> · ${esc(b.customer_phone || '')}</div>
+            </div>
+            <div>
+              <div class="small">Job date</div>
+              <strong>${fmtDate(b.job_date)}</strong>
+              ${r.fee > 0
+                ? `<span class="fin-pill partial" title="Cancelled within 48 hours of the job date">Partial · GH₵${r.fee.toFixed(2)} fee</span>`
+                : `<span class="fin-pill full" title="Cancelled at least 48 hours ahead">Full refund</span>`}
+            </div>
+            <div class="amount">
+              ${fmtGHS(r.amount)}
+              <span class="sub">Refund owing</span>
+            </div>
+            <div>
+              ${isPending
+                ? `<button class="btn btn-primary" onclick="finMarkRefunded('${esc(b.id)}', ${Number(r.amount) || 0})">Mark refunded</button>`
+                : `<span class="fin-pill paid">Refunded ${fmtDate(b.refund_processed_at)}</span>`}
+            </div>
+          </div>
+        </article>`;
+    }
+
+    async function finMarkPaid(bookingId) {
+      const card = document.querySelector(`[data-id="${bookingId}"]`);
+      const btn  = card && card.querySelector('button');
+      if (btn) { btn.disabled = true; btn.textContent = 'Marking…'; }
+      try {
+        const res = await fetch(`/api/finance/bookings/${encodeURIComponent(bookingId)}/mark-paid`, {
+          method:  'PUT',
+          headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        });
+        const j = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error((j && j.message) || 'HTTP ' + res.status);
+        if (typeof pmToast === 'function') pmToast(j.message || `Marked ${bookingId} paid.`, 'success');
+        finLoad();
+      } catch (e) {
+        if (btn) { btn.disabled = false; btn.textContent = 'Mark paid'; }
+        if (typeof pmToast === 'function') pmToast(e.message, 'error');
+        else alert('Mark paid failed: ' + e.message);
+      }
+    }
+
+    async function finMarkRefunded(bookingId, suggestedAmount) {
+      const input = prompt(`Refund amount for ${bookingId} (GHS)?`, suggestedAmount);
+      if (input == null) return;
+      const amount = Number(input);
+      if (!Number.isFinite(amount) || amount < 0) {
+        alert('Amount must be a non-negative number.');
+        return;
+      }
+      const card = document.querySelector(`[data-id="${bookingId}"]`);
+      const btn  = card && card.querySelector('button');
+      if (btn) { btn.disabled = true; btn.textContent = 'Marking…'; }
+      try {
+        const res = await fetch(`/api/finance/bookings/${encodeURIComponent(bookingId)}/mark-refunded`, {
+          method:  'PUT',
+          headers: { 'Content-Type': 'application/json', ...authHeaders() },
+          body:    JSON.stringify({ amount }),
+        });
+        const j = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error((j && j.message) || 'HTTP ' + res.status);
+        if (typeof pmToast === 'function') pmToast(j.message || `Refund recorded.`, 'success');
+        finLoad();
+      } catch (e) {
+        if (btn) { btn.disabled = false; btn.textContent = 'Mark refunded'; }
+        if (typeof pmToast === 'function') pmToast(e.message, 'error');
+        else alert('Mark refunded failed: ' + e.message);
+      }
+    }
+
+    document.getElementById('finTabs').addEventListener('click', e => {
+      const btn = e.target.closest('.fin-tab'); if (!btn) return;
+      document.querySelectorAll('.fin-tab').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      state.tab = btn.dataset.tab;
+      finLoad();
+    });
+
+    finLoad();
+  </script>
+</body>
+</html>

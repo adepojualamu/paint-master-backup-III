@@ -26,6 +26,24 @@ function pmReadMode() {
 const PM_MODE = pmReadMode();
 const PM_IS_PRODUCTION = PM_MODE === 'production';
 
+// One-time production purge. A browser previously used in demo mode still has
+// the seeded demo stores in localStorage (painter calendars, artisan/customer
+// lists, reviews, activity). In production those would otherwise show through,
+// because loaders read the saved copy before hydrating empty. Clear the demo
+// DATA stores exactly once so production starts blank. Never touches the auth
+// token (would sign the user out) or branding settings. Guarded by a flag, so
+// it runs once and never wipes real entries created afterwards.
+(function pmProductionPurgeOnce() {
+  try {
+    if (!PM_IS_PRODUCTION) return;
+    var FLAG = 'pm_prod_purged_v1';
+    if (localStorage.getItem(FLAG)) return;
+    ['pm_admin_state_v2', 'pm_admin_inbox_v1', 'pm_users_v1', 'pm_reviews_v1', 'pm_activity_v1']
+      .forEach(function (k) { try { localStorage.removeItem(k); } catch (e) {} });
+    localStorage.setItem(FLAG, new Date().toISOString());
+  } catch (e) { /* localStorage unavailable — nothing to purge */ }
+})();
+
 // ─────────────────────────────────────────────
 // BRAND CONFIG — single source of truth.
 // Four asset variants live in assets/img/:
@@ -489,7 +507,7 @@ const PM_API_BASE = (location.protocol === 'file:' ? '' : '') + '/api';
 // rotate to a real password on first sign-in (see change-password.html).
 const PM_DEMO_USERS = PM_IS_PRODUCTION ? [] : [
   // Admin + customer
-  { phone: '0244000000', password: 'password123', user: { id: 1,   name: 'Akosua Boateng',  role: 'admin',    phone: '0244000000', email: 'akosua@paintmasters.gh', region: 'Accra',      title: 'Lead Dispatcher' } },
+  { phone: '0244000000', password: 'password123', user: { id: 1,   name: 'Akosua Boateng',  role: 'admin',    sub_role: 'super_admin', phone: '0244000000', email: 'akosua@paintmasters.gh', region: 'Accra',      title: 'Lead Dispatcher' } },
   { phone: '0244200001', password: 'password123', user: { id: 2,   name: 'Ama Owusu',       role: 'customer', phone: '0244200001', email: 'ama@example.com',         region: 'Accra' } },
 
   // Twelve Paint Masters — phones match SEED_ARTISANS in admin-shared.js.
@@ -1486,6 +1504,101 @@ function pmLoadQuote() {
 function pmFormatGHS(n) {
   if (isNaN(n)) return 'GHS 0';
   return 'GHS ' + Math.round(n).toLocaleString('en-GH');
+}
+
+// ─────────────────────────────────────────────────────────────
+// Canonical pricing helpers — the SERVER is the single source of truth.
+//
+// The quote page no longer carries its own pricing formula. It sends the job
+// inputs to POST /api/quotes/preview and displays whatever the canonical
+// engine (services/pricing.js, driven by the operator's rate card) returns —
+// so the number a customer sees is exactly the number they're charged.
+//
+// pmLocalQuote is a faithful MIRROR of services/pricing.js, used ONLY as a
+// fallback when the preview endpoint is unreachable (offline / file:// demo).
+// It reads live rates from GET /api/quotes/rates when available, falling back
+// to these defaults (which mirror migration 031's seed).
+// ─────────────────────────────────────────────────────────────
+const PM_PRICING_FALLBACK = {
+  ratePerSqm: { Interior: 14, Exterior: 18, Commercial: 22, Decorative: 35, Waterproofing: 28, Repaint: 12 },
+  materialsPerSqm: 45, defaultRatePerDay: 500, platformFeePct: 0.10, vatPct: 0.125,
+};
+let _pmRateCard = null;
+
+// Best-effort load of the live rate card for the local fallback. Safe to call
+// once on page load; silently keeps the defaults if the API isn't reachable.
+async function pmLoadRateCard() {
+  try {
+    const r = await fetch('/api/quotes/rates');
+    if (r.ok) { const j = await r.json(); if (j && j.success && j.rates) _pmRateCard = j.rates; }
+  } catch (_) { /* offline — keep defaults */ }
+  return _pmRateCard || PM_PRICING_FALLBACK;
+}
+
+// Map a client SERVICES id → one of the backend service keys
+// (Interior | Exterior | Commercial | Decorative | Waterproofing | Repaint).
+// Single source of truth shared by quote.html and booking.html so the service
+// a customer is priced on never depends on which page does the mapping.
+function pmMapServiceToBackend(category, serviceId) {
+  if (category === 'commercial') return 'Commercial';
+  if (category === 'decorative') return 'Decorative';
+  if (category === 'specialty') {
+    if (serviceId === 'waterproof' || serviceId === 'pool') return 'Waterproofing';
+    if (serviceId === 'roof' || serviceId === 'fence')      return 'Exterior';
+    return 'Repaint';
+  }
+  if (serviceId === 'ext_facade') return 'Exterior';
+  return 'Interior';
+}
+
+// Painter-days from area: ~50 m²/day, clamped 1..60. Mirrors the server's
+// deriveDurationDays so the preview and the created quote agree.
+function pmEstimateDurationDays(area) {
+  const d = Math.max(1, Math.ceil(Number(area) / 50));
+  return Math.min(60, d);
+}
+
+function _pmRound2(n) { return Math.round(n * 100) / 100; }
+
+// Local mirror of services/pricing.calculateQuote. Returns the same breakdown
+// shape the server's /preview returns.
+function pmLocalQuote(input, rates) {
+  rates = rates || _pmRateCard || PM_PRICING_FALLBACK;
+  const service   = String(input.service || '');
+  const area      = Number(input.area_sqm) || 0;
+  const days      = Number(input.duration_days) || pmEstimateDurationDays(area);
+  const ratePerDay = Number(input.rate_per_day) || rates.defaultRatePerDay;
+  const includeMats = true;   // always-on: materials included on every job (mirrors services/pricing.js)
+
+  const labour_day = _pmRound2(ratePerDay * days);
+  const labour_sqm = _pmRound2(area * (rates.ratePerSqm[service] || 0));
+  const labour     = _pmRound2(labour_day + labour_sqm);
+  const materials  = includeMats ? _pmRound2(area * rates.materialsPerSqm) : 0;
+  const subtotal     = _pmRound2(labour + materials);
+  const platform_fee = _pmRound2(labour * rates.platformFeePct);
+  const total_ex_vat = _pmRound2(subtotal + platform_fee);
+  const vat          = _pmRound2(total_ex_vat * rates.vatPct);
+  const total        = _pmRound2(total_ex_vat + vat);
+  return { labour, labour_day, labour_sqm, materials, subtotal, platform_fee, total_ex_vat, vat, total };
+}
+
+// Get the canonical quote breakdown for a set of inputs. Tries the server's
+// preview endpoint first (authoritative); falls back to the local mirror.
+// input: { service, area_sqm, materials_included?, duration_days?, painter_id? }
+// Returns { source: 'server'|'local', pricing: {...} }.
+async function pmServerQuote(input) {
+  try {
+    const r = await fetch('/api/quotes/preview', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    });
+    if (r.ok) {
+      const j = await r.json();
+      if (j && j.success && j.pricing) return { source: 'server', pricing: j.pricing };
+    }
+  } catch (_) { /* fall through to local */ }
+  return { source: 'local', pricing: pmLocalQuote(input, _pmRateCard || PM_PRICING_FALLBACK) };
 }
 
 // Lightweight toast

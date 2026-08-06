@@ -1,0 +1,364 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta name="pm-mode" content="production">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" type="image/png" href="../assets/img/favicon.png" />
+  <title>Assign Bookings — Paint Masters Dispatcher</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/admin.css" />
+  <style>
+    /* Dispatcher's unassigned-booking queue. Pulls bookings where
+       painter_id IS NULL and status='pending_assignment' — the state a
+       customer-side booking lands in until a dispatcher hands it to a
+       Paint Master via PUT /api/bookings/:id/assign. */
+    .ab-card {
+      background: #fff; border: 1px solid var(--ink-100); border-radius: var(--radius-lg);
+      margin-bottom: 14px; overflow: hidden;
+    }
+    .ab-head {
+      display:flex; justify-content:space-between; align-items:flex-start; gap:12px;
+      padding: 16px 20px; background: linear-gradient(180deg, #f7faff, #ffffff);
+      border-bottom: 1px solid var(--ink-100); flex-wrap: wrap;
+    }
+    .ab-head .id { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.85rem; color: var(--ink-500); }
+    .ab-head h3  { margin: 4px 0 6px; font-size: 1.05rem; }
+    .ab-meta     { font-size: 0.86rem; color: var(--ink-700); }
+    .ab-meta span { margin-right: 14px; }
+    .ab-meta strong { color: var(--navy-900); }
+
+    .ab-status-pill {
+      font-size: 0.7rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase;
+      padding: 4px 10px; border-radius: 999px; background: #fff5d7; color: #8b5a00;
+    }
+    .ab-status-pill.propose { background: #e3f5e8; color: #1c7a3e; }
+
+    /* Section headers separating the two queues. */
+    .ab-queue-head {
+      display: flex; align-items: baseline; gap: 10px; margin: 6px 2px 12px;
+    }
+    .ab-queue-head h2 { font-size: 1.05rem; margin: 0; }
+    .ab-queue-head .count {
+      font-size: 0.75rem; font-weight: 700; color: var(--ink-500);
+      background: var(--ink-100); padding: 2px 9px; border-radius: 999px;
+    }
+    .ab-queue-head .hint { font-size: 0.84rem; color: var(--ink-500); margin-left: auto; }
+    .ab-queue + .ab-queue { margin-top: 34px; }
+
+    /* Proposed-painter banner inside an approval card. */
+    .ab-proposed {
+      display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+      padding: 10px 14px; margin: 0 20px; border-radius: 10px;
+      background: #f2fbf5; border: 1px solid #cdeed7; font-size: 0.92rem;
+    }
+    .ab-proposed .who { font-weight: 700; color: var(--navy-900); }
+    .ab-proposed .badge {
+      font-size: 0.68rem; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase;
+      color: #1c7a3e; background: #d6f0de; padding: 2px 8px; border-radius: 999px;
+    }
+    .ab-proposed .ab-warn {
+      font-size: 0.76rem; font-weight: 700; color: #8a5a00;
+      background: #fff2d6; border: 1px solid #f0d79a; padding: 2px 9px; border-radius: 999px;
+    }
+    /* Approval action row: approve / reject on the left, reassign on the right. */
+    .ab-approve-actions {
+      padding: 14px 20px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+      background: #fafbfc; border-top: 1px solid var(--ink-100);
+    }
+    .ab-approve-actions .spacer { flex: 1 1 12px; }
+    .ab-approve-actions select {
+      padding: 9px 12px; border: 1px solid var(--ink-300); border-radius: 8px;
+      font: inherit; font-size: 0.9rem; background: #fff; max-width: 260px;
+    }
+    .btn-danger-outline {
+      background: #fff; border: 1px solid #e2b6b6; color: #b23b3b;
+    }
+    .btn-danger-outline:hover { background: #fdf2f2; }
+
+    .ab-body { padding: 14px 20px; display: grid; grid-template-columns: 1.4fr 1fr; gap: 18px; }
+    @media (max-width: 880px) { .ab-body { grid-template-columns: 1fr; } }
+    .ab-section h4 {
+      font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em;
+      color: var(--ink-500); margin: 0 0 6px; font-weight: 700;
+    }
+    .ab-section p { margin: 0; color: var(--ink-700); font-size: 0.92rem; line-height: 1.5; }
+    .ab-section .num { font-variant-numeric: tabular-nums; font-weight: 700; color: var(--navy-900); }
+
+    .ab-actions {
+      padding: 14px 20px; display: grid; grid-template-columns: 1fr auto; gap: 12px;
+      align-items: center; background: #fafbfc; border-top: 1px solid var(--ink-100);
+    }
+    @media (max-width: 620px) { .ab-actions { grid-template-columns: 1fr; } }
+    .ab-actions select {
+      padding: 9px 12px; border: 1px solid var(--ink-300); border-radius: 8px;
+      font: inherit; font-size: 0.92rem; background: #fff;
+    }
+    .ab-actions .btn { white-space: nowrap; }
+
+    .ab-empty { padding: 60px 20px; text-align: center; color: var(--ink-500); }
+    .ab-empty strong { display: block; color: var(--navy-900); font-size: 1.1rem; margin-bottom: 6px; }
+    .ab-loading { padding: 40px; text-align: center; color: var(--ink-500); font-size: 0.95rem; }
+  </style>
+</head>
+<body>
+  <div class="admin-shell">
+    <div id="admin-sidebar"></div>
+    <div class="admin-main">
+      <div id="admin-topbar"></div>
+      <div class="main">
+
+        <div class="page-head">
+          <div>
+            <h1>Assign Bookings</h1>
+            <div class="sub" style="color:var(--ink-500);">
+              The system proposes a Paint Master for each new booking. Approve it, reject it (to try the next best), or reassign to someone specific. Bookings with no free painter fall through to the manual queue below.
+            </div>
+          </div>
+          <div class="page-actions">
+            <button class="btn btn-outline" onclick="abLoad()">↺ Refresh</button>
+          </div>
+        </div>
+
+        <div id="abRoot">
+          <div class="ab-loading">Loading queue…</div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <script src="../assets/shared.js"></script>
+  <script src="assets/admin-shared.js"></script>
+  <script>
+    adminMount('assign-bookings');
+
+    const state = {
+      proposed: [],     // status=pending_approval (awaiting dispatcher approval)
+      bookings: [],     // status=pending_assignment (manual queue / no free painter)
+      painters: [],     // active painters
+    };
+
+    function authHeaders() {
+      const t = (typeof pmAuth !== 'undefined' && pmAuth.token) ? pmAuth.token() : null;
+      return t ? { 'Authorization': `Bearer ${t}` } : {};
+    }
+    function fmtGHS(n) {
+      try { return pmFormatGHS(n); }
+      catch { return 'GHS ' + Math.round(Number(n) || 0).toLocaleString(); }
+    }
+    function esc(s) {
+      return String(s == null ? '' : s)
+        .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+        .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+    }
+    function fmtDate(iso) {
+      if (!iso) return '—';
+      try {
+        const d = new Date(iso);
+        return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+      } catch { return iso; }
+    }
+
+    // Load both queues + the roster in parallel so the painter dropdowns are
+    // populated by the time the cards render.
+    async function abLoad() {
+      const host = document.getElementById('abRoot');
+      host.innerHTML = '<div class="ab-loading">Loading queue…</div>';
+      try {
+        const [proposedRes, bookingsRes, paintersRes] = await Promise.all([
+          fetch('/api/bookings?status=pending_approval&limit=100',   { headers: authHeaders() }),
+          fetch('/api/bookings?status=pending_assignment&limit=100', { headers: authHeaders() }),
+          fetch('/api/painters?limit=200',                           { headers: authHeaders() }),
+        ]);
+        if (!proposedRes.ok) throw new Error('Bookings API: HTTP ' + proposedRes.status);
+        if (!bookingsRes.ok) throw new Error('Bookings API: HTTP ' + bookingsRes.status);
+        if (!paintersRes.ok) throw new Error('Painters API: HTTP ' + paintersRes.status);
+        const [ppj, bj, pj] = await Promise.all([proposedRes.json(), bookingsRes.json(), paintersRes.json()]);
+        state.proposed = Array.isArray(ppj.bookings) ? ppj.bookings : [];
+        state.bookings = Array.isArray(bj.bookings)  ? bj.bookings  : [];
+        state.painters = Array.isArray(pj.painters)  ? pj.painters  : [];
+        render();
+        // Keep the sidebar dispatcher badge in sync after loads/actions.
+        if (typeof updateAssignBadge === 'function') updateAssignBadge();
+      } catch (e) {
+        host.innerHTML = `
+          <div class="ab-empty">
+            <strong>Couldn't load the queue.</strong>
+            <p>${esc(e.message)} — make sure the backend is running and you're signed in as a dispatcher.</p>
+          </div>`;
+      }
+    }
+
+    // Painter <option> list, optionally excluding one id (the already-proposed
+    // painter, so "reassign" only offers a different person).
+    function painterOptions(excludeId) {
+      const list = state.painters.filter(p => Number(p.id) !== Number(excludeId));
+      if (!list.length) return '<option value="" disabled>No other active painters</option>';
+      return list.map(p =>
+        `<option value="${p.id}">${esc(p.name)} — ${esc(p.city || '')} · ${p.rate_per_day} GHS/day${p.avg_rating ? ' · ★ ' + Number(p.avg_rating).toFixed(1) : ''}</option>`
+      ).join('');
+    }
+
+    function render() {
+      const host = document.getElementById('abRoot');
+      const proposedSection = `
+        <section class="ab-queue">
+          <div class="ab-queue-head">
+            <h2>Awaiting your approval</h2>
+            <span class="count">${state.proposed.length}</span>
+            <span class="hint">System-proposed — the painter isn't notified until you approve.</span>
+          </div>
+          ${state.proposed.length
+            ? state.proposed.map(renderProposedCard).join('')
+            : `<div class="ab-empty"><strong>Nothing to approve.</strong><p>New bookings will appear here with a proposed Paint Master.</p></div>`}
+        </section>`;
+
+      const manualSection = `
+        <section class="ab-queue">
+          <div class="ab-queue-head">
+            <h2>Manual queue</h2>
+            <span class="count">${state.bookings.length}</span>
+            <span class="hint">No painter was free — assign one by hand.</span>
+          </div>
+          ${state.bookings.length
+            ? state.bookings.map(renderCard).join('')
+            : `<div class="ab-empty"><strong>Manual queue is clear.</strong><p>Every unassigned booking got a proposed Paint Master automatically.</p></div>`}
+        </section>`;
+
+      host.innerHTML = proposedSection + manualSection;
+    }
+
+    // Shared header + body (identity, address, totals) for a booking card.
+    function cardHeadAndBody(b, pill) {
+      return `
+        <div class="ab-head">
+          <div>
+            <span class="id">${esc(b.id)}</span>
+            <h3>${esc(b.service)} · ${Number(b.area_sqm || 0).toFixed(0)} m² · ${b.duration_days} day${b.duration_days === 1 ? '' : 's'}</h3>
+            <div class="ab-meta">
+              <span>Customer <strong>${esc(b.customer_name || '—')}</strong></span>
+              <span>Job date <strong>${fmtDate(b.job_date)}</strong></span>
+              <span>Submitted <strong>${fmtDate(b.created_at)}</strong></span>
+            </div>
+          </div>
+          ${pill}
+        </div>
+        <div class="ab-body">
+          <div class="ab-section">
+            <h4>Address</h4>
+            <p>${esc(b.address || '—')}</p>
+          </div>
+          <div class="ab-section">
+            <h4>Totals</h4>
+            <p>
+              <span class="num">${fmtGHS(b.total)}</span>
+              <span style="color:var(--ink-500);"> total · ${fmtGHS(b.subtotal)} subtotal · ${fmtGHS(b.platform_fee)} platform fee</span>
+            </p>
+            ${b.quote_id ? `<p style="margin-top:6px;font-size:0.84rem;color:var(--ink-500);">Linked quote <span style="font-family:ui-monospace,Menlo,monospace;color:var(--navy-900);">${esc(b.quote_id)}</span></p>` : ''}
+          </div>
+        </div>`;
+    }
+
+    // Proposed booking (pending_approval): approve / reject / reassign.
+    function renderProposedCard(b) {
+      const pill = `<span class="ab-status-pill propose">Proposed</span>`;
+      // Flag proposals where the painter doesn't list the job's service — the
+      // system fell back to a free painter because nobody in-specialty was open.
+      const svcList = Array.isArray(b.painter_services) ? b.painter_services : [];
+      const outOfSpecialty = svcList.length && b.service && !svcList.includes(b.service);
+      const warn = outOfSpecialty
+        ? `<span class="ab-warn" title="This painter doesn't usually do ${esc(b.service)} jobs. Reassign if you'd prefer a specialist.">⚠ Outside usual services</span>`
+        : '';
+      return `
+        <article class="ab-card" data-booking-id="${esc(b.id)}">
+          ${cardHeadAndBody(b, pill)}
+          <div class="ab-proposed">
+            <span class="badge">Proposed painter</span>
+            <span class="who">${esc(b.painter_name || ('#' + b.painter_id))}</span>
+            <span style="color:var(--ink-500);">${esc(b.painter_city || '')}</span>
+            ${warn}
+          </div>
+          <div class="ab-approve-actions">
+            <button class="btn btn-primary" onclick="abApprove('${esc(b.id)}')">✓ Approve</button>
+            <button class="btn btn-danger-outline" onclick="abReject('${esc(b.id)}')">✕ Reject &amp; try next</button>
+            <span class="spacer"></span>
+            <select data-painter-select="${esc(b.id)}" aria-label="Reassign to a specific Paint Master">
+              <option value="">Reassign to…</option>
+              ${painterOptions(b.painter_id)}
+            </select>
+            <button class="btn btn-outline" onclick="abAssign('${esc(b.id)}')">Reassign →</button>
+          </div>
+        </article>`;
+    }
+
+    // Manual-queue booking (pending_assignment): pick a painter and assign.
+    function renderCard(b) {
+      const opts = state.painters.length
+        ? `<option value="">Pick a Paint Master…</option>` + painterOptions(null)
+        : '<option value="" disabled>No active painters in the roster</option>';
+      const pill = `<span class="ab-status-pill">${esc(b.status.replace('_', ' '))}</span>`;
+      return `
+        <article class="ab-card" data-booking-id="${esc(b.id)}">
+          ${cardHeadAndBody(b, pill)}
+          <div class="ab-actions">
+            <select data-painter-select="${esc(b.id)}" aria-label="Pick a Paint Master">${opts}</select>
+            <button class="btn btn-primary" onclick="abAssign('${esc(b.id)}')" ${state.painters.length ? '' : 'disabled'}>
+              Assign Paint Master →
+            </button>
+          </div>
+        </article>`;
+    }
+
+    // Generic PUT helper for the card actions. Disables the clicked button
+    // while in flight, toasts the result, and reloads both queues on success.
+    async function abAction(bookingId, path, body, btn, busyLabel) {
+      const original = btn ? btn.textContent : null;
+      if (btn) { btn.disabled = true; btn.textContent = busyLabel; }
+      try {
+        const res = await fetch(`/api/bookings/${encodeURIComponent(bookingId)}/${path}`, {
+          method:  'PUT',
+          headers: { 'Content-Type': 'application/json', ...authHeaders() },
+          body:    JSON.stringify(body || {}),
+        });
+        const j = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error((j && j.message) || ('HTTP ' + res.status));
+        if (typeof pmToast === 'function') pmToast(j.message || 'Done.', 'success');
+        abLoad();
+      } catch (e) {
+        if (btn) { btn.disabled = false; btn.textContent = original; }
+        if (typeof pmToast === 'function') pmToast(e.message, 'error');
+        else alert('Failed: ' + e.message);
+      }
+    }
+
+    function abApprove(bookingId) {
+      const card = document.querySelector(`[data-booking-id="${bookingId}"]`);
+      abAction(bookingId, 'approve-assignment', {}, card && card.querySelector('.btn-primary'), 'Approving…');
+    }
+
+    function abReject(bookingId) {
+      const card = document.querySelector(`[data-booking-id="${bookingId}"]`);
+      abAction(bookingId, 'reject-assignment', {}, card && card.querySelector('.btn-danger-outline'), 'Rejecting…');
+    }
+
+    // Used by both the manual "Assign" and the proposed "Reassign" buttons.
+    function abAssign(bookingId) {
+      const select = document.querySelector(`[data-painter-select="${bookingId}"]`);
+      const painterId = select && Number(select.value);
+      if (!painterId) {
+        if (typeof pmToast === 'function') pmToast('Pick a Paint Master first.', 'warn');
+        return;
+      }
+      const card = document.querySelector(`[data-booking-id="${bookingId}"]`);
+      // The assign/reassign button is the one that isn't approve/reject.
+      const btn = card && (card.querySelector('.ab-actions .btn-primary') || card.querySelector('.ab-approve-actions .btn-outline'));
+      abAction(bookingId, 'assign', { painter_id: painterId }, btn, 'Assigning…');
+    }
+
+    abLoad();
+  </script>
+</body>
+</html>

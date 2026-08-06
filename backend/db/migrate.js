@@ -36,11 +36,32 @@ function pendingMigrations() {
 
 function runOne(file) {
   const sql = fs.readFileSync(path.join(MIGRATIONS_DIR, file), 'utf8');
-  const tx = db.transaction(() => {
-    db.exec(sql);
-    db.prepare('INSERT INTO _migrations (id) VALUES (?)').run(file);
-  });
-  tx();
+
+  // Foreign-key enforcement must be toggled OUTSIDE the transaction: SQLite
+  // treats `PRAGMA foreign_keys` as a no-op while a transaction is open, so a
+  // migration that relies on `PRAGMA foreign_keys = OFF` (the standard 12-step
+  // table-rebuild procedure, e.g. 026) would otherwise run with FKs still on
+  // and fail on DROP TABLE with "FOREIGN KEY constraint failed". We disable
+  // FKs here, run the migration in a transaction, then re-enable and verify
+  // the rebuild left no dangling references.
+  db.pragma('foreign_keys = OFF');
+  try {
+    const tx = db.transaction(() => {
+      db.exec(sql);
+      db.prepare('INSERT INTO _migrations (id) VALUES (?)').run(file);
+    });
+    tx();
+  } finally {
+    db.pragma('foreign_keys = ON');
+  }
+
+  const violations = db.pragma('foreign_key_check');
+  if (violations.length > 0) {
+    throw new Error(
+      `Migration ${file} left foreign-key violations: ${JSON.stringify(violations)}`
+    );
+  }
+
   log.info({ file }, 'Applied migration');
 }
 

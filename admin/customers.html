@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="en">
 <head>
+  <meta name="pm-mode" content="production">
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="icon" type="image/png" href="../assets/img/favicon.png" />
@@ -69,6 +70,10 @@
   <script>
     adminMount('customers');
 
+    // In production the store is hydrated from the API after mount; re-render
+    // the customer list when that live data lands (no-op in demo mode).
+    window.addEventListener('pmStoreReady', function () { try { render(); } catch (e) {} });
+
     const f = { search:'', type:'', sort:'ltv' };
     // Deep-link: ?id=<customerId> from the topbar search auto-selects.
     let activeId = (() => {
@@ -105,13 +110,22 @@
       rows.sort(sorters[f.sort]);
       document.getElementById('cCount').textContent = `${rows.length} customers`;
 
-      document.getElementById('custList').innerHTML = rows.map(c => `
+      document.getElementById('custList').innerHTML = rows.map(c => {
+        // "Potential" — customer has signed up but hasn't booked yet. Tag
+        // set by pmCreateAdminCustomer() in assets/shared.js when login.html
+        // creates a fresh account.
+        const isLead = c.isLead === true || (c.jobs === 0 && c.ltv === 0);
+        const leadBadge = isLead
+          ? `<span title="Signed up but hasn't booked yet"
+                  style="background:#fef1c9;color:#7a5a00;font-size:0.62rem;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;padding:2px 7px;border-radius:999px;margin-left:6px;">Potential</span>`
+          : '';
+        return `
         <li class="cust-row" data-id="${c.id}" onclick="selectCustomer('${c.id}')"
             style="display:flex;gap:12px;padding:14px 18px;border-bottom:1px solid var(--ink-100);cursor:pointer;${activeId===c.id?'background:rgba(245,184,0,0.08);border-left:3px solid var(--gold-500);padding-left:15px;':''}">
           <div class="avatar" style="width:40px;height:40px;flex-shrink:0;">${initials(c.name)}</div>
           <div style="flex:1;min-width:0;">
             <div style="display:flex;justify-content:space-between;align-items:center;">
-              <strong>${c.name}</strong>
+              <strong>${c.name}${leadBadge}</strong>
               <span class="amt small" style="color:var(--navy-900);font-weight:700;">${fmtGHS(c.ltv)}</span>
             </div>
             <div class="small" style="display:flex;gap:8px;align-items:center;">
@@ -119,8 +133,8 @@
               ${c.rating ? `<span style="color:var(--gold-500);">★ ${c.rating}</span>` : ''}
             </div>
           </div>
-        </li>
-      `).join('') || '<li style="padding:20px;color:var(--ink-500);">No customers match.</li>';
+        </li>`;
+      }).join('') || '<li style="padding:20px;color:var(--ink-500);">No customers match.</li>';
 
       if (!activeId && rows.length) activeId = rows[0].id;
       renderDetail();

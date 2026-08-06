@@ -35,6 +35,8 @@ const ADMIN_NAV = `
     <a href="index.html"    data-page="dash"><span class="ico">📊</span> Dashboard</a>
     <a href="jobs.html"     data-page="jobs"><span class="ico">🗂️</span> Job Board <span class="badge st-new" id="nav-new-jobs">3</span></a>
     <a href="volume-reviews.html" data-page="volume-reviews"><span class="ico">🪣</span> Volume Reviews <span class="badge st-warn" id="nav-pending-volume" style="display:none;">0</span></a>
+    <a href="assign-bookings.html" data-page="assign-bookings"><span class="ico">📌</span> Assign Bookings <span class="badge st-warn" id="nav-pending-assign" style="display:none;">0</span></a>
+    <a href="qa-reviews.html" data-page="qa-reviews"><span class="ico">✔️</span> QA Reviews <span class="badge st-warn" id="nav-pending-qa" style="display:none;">0</span></a>
     <a href="artisans.html" data-page="artisans"><span class="ico">🎨</span> Paint Masters</a>
     <a href="customers.html"data-page="customers"><span class="ico">👥</span> Customers</a>
     <div class="group-label">Resources</div>
@@ -42,6 +44,8 @@ const ADMIN_NAV = `
     <a href="paint-products.html" data-page="paint-products"><span class="ico">🎨</span> Paint Catalog</a>
     <a href="brand-partners.html" data-page="brand-partners"><span class="ico">🤝</span> Brand Partners</a>
     <a href="payouts.html"  data-page="payouts"><span class="ico">💰</span> Painter Payouts</a>
+    <a href="finance.html"  data-page="finance"><span class="ico">💼</span> Finance</a>
+    <a href="pricing.html"  data-page="pricing"><span class="ico">🏷️</span> Pricing</a>
     <a href="analytics.html"data-page="analytics"><span class="ico">📈</span> Analytics</a>
     <div class="group-label">Account</div>
     <a href="approvals.html" data-page="approvals"><span class="ico">✅</span> Approvals <span class="badge st-warn" id="nav-pending-approvals" style="display:none;">0</span></a>
@@ -82,6 +86,100 @@ const ADMIN_TOPBAR = (title, sub) => `
 </div>
 `;
 
+// ──────────────────────────────────────────────────────────────
+// Role-based access. The backend already enforces admin sub-roles on the
+// API (routes/finance.js requires 'finance', assign/QA require 'dispatcher'
+// / 'qa', etc.); this mirrors that in the UI so admins only see — and can
+// only open — the sections their sub-role owns.
+//
+// ADMIN_PAGE_ROLES maps a page (data-page) to the sub-role(s) allowed to use
+// it. super_admin sees everything. An admin with NO sub_role is treated as
+// full-access — this mirrors the backend's requireSubRole bootstrap (any
+// admin passes until a super_admin is designated) and avoids locking people
+// out mid-migration. Pages absent from the map are open to all admins
+// (Dashboard, Analytics, Help).
+// ──────────────────────────────────────────────────────────────
+const ADMIN_PAGE_ROLES = {
+  // Operations — dispatcher
+  'jobs':            ['dispatcher'],
+  'volume-reviews':  ['dispatcher'],
+  'assign-bookings': ['dispatcher'],
+  'artisans':        ['dispatcher'],
+  'customers':       ['dispatcher'],
+  'inventory':       ['dispatcher'],
+  'paint-products':  ['dispatcher'],
+  'brand-partners':  ['dispatcher'],
+  // Quality — qa
+  'qa-reviews':      ['qa'],
+  // Money / accounting — finance
+  'payouts':         ['finance'],
+  'finance':         ['finance'],
+  'pricing':         ['finance'],
+  // Account administration — super_admin only ([] = no ordinary sub-role qualifies)
+  'approvals':       [],
+  'team':            [],
+  'settings':        [],
+};
+
+const ADMIN_ROLE_LABELS = {
+  dispatcher:  'Dispatcher',
+  qa:          'Quality Assurance',
+  finance:     'Finance',
+  super_admin: 'Super Admin',
+};
+
+// The signed-in admin's sub_role (from the login response / GET /auth/me,
+// both of which include it), or null if none is set.
+function pmAdminSubRole() {
+  try { const u = pmAuth.user(); return (u && u.sub_role) ? u.sub_role : null; }
+  catch (e) { return null; }
+}
+
+// Can the signed-in admin access `page`?
+function pmAdminCanAccess(page) {
+  const sr = pmAdminSubRole();
+  if (!sr || sr === 'super_admin') return true;   // full access / bootstrap
+  if (!(page in ADMIN_PAGE_ROLES)) return true;     // unlisted => open to all admins
+  return ADMIN_PAGE_ROLES[page].includes(sr);
+}
+
+// Remove sidebar links this admin can't use, then drop any now-empty group
+// labels so the nav doesn't show a header with nothing under it.
+function pmFilterAdminNav() {
+  document.querySelectorAll('.side-nav a[data-page]').forEach(a => {
+    if (!pmAdminCanAccess(a.dataset.page)) a.remove();
+  });
+  document.querySelectorAll('.side-nav .group-label').forEach(label => {
+    let el = label.nextElementSibling, hasLink = false;
+    while (el && !el.classList.contains('group-label')) {
+      if (el.tagName === 'A') { hasLink = true; break; }
+      el = el.nextElementSibling;
+    }
+    if (!hasLink) label.remove();
+  });
+}
+
+// Full-screen overlay shown when an admin opens a page their sub-role can't
+// use (e.g. by typing the URL). Fixed + high z-index so it covers whatever
+// the page's own script renders underneath.
+function pmRenderAccessDenied(page) {
+  const sr    = pmAdminSubRole();
+  const label = (sr && ADMIN_ROLE_LABELS[sr]) || 'your role';
+  const old = document.getElementById('pmAccessDenied'); if (old) old.remove();
+  const el = document.createElement('div');
+  el.id = 'pmAccessDenied';
+  el.setAttribute('role', 'alertdialog');
+  el.style.cssText = 'position:fixed;inset:0;z-index:9998;background:rgba(247,250,252,0.98);display:flex;align-items:center;justify-content:center;padding:24px;';
+  el.innerHTML =
+    '<div style="max-width:440px;text-align:center;background:#fff;border:1px solid #e5e7eb;border-radius:16px;padding:34px 28px;box-shadow:0 12px 34px rgba(11,31,58,0.10);">' +
+      '<div style="font-size:34px;margin-bottom:10px;">🔒</div>' +
+      '<h2 style="margin:0 0 8px;font-size:1.15rem;color:#0B1F3A;">Restricted section</h2>' +
+      '<p style="margin:0 0 20px;color:#5b6472;font-size:0.94rem;line-height:1.55;">The <strong>' + page + '</strong> section is limited to specific roles. Your role (<strong>' + label + '</strong>) doesn\'t have access. Ask a super-admin if you need it.</p>' +
+      '<a href="index.html" style="display:inline-block;background:#0B1F3A;color:#fff;text-decoration:none;padding:10px 20px;border-radius:9px;font-weight:600;">← Back to Dashboard</a>' +
+    '</div>';
+  document.body.appendChild(el);
+}
+
 function adminMount(activePage) {
   // Auth gate — anyone hitting an admin page without being signed in
   // (or signed in as a non-admin) gets bounced to the unified login page.
@@ -107,6 +205,17 @@ function adminMount(activePage) {
     document.querySelectorAll('.side-nav a').forEach(a => {
       if (a.dataset.page === activePage) a.classList.add('active');
     });
+  }
+
+  // Role-based nav: hide sections this admin's sub-role can't use.
+  pmFilterAdminNav();
+
+  // Role guard: if they reached a restricted page directly (typed URL),
+  // show the access-denied overlay and stop wiring the rest of the page.
+  if (activePage && !pmAdminCanAccess(activePage)) {
+    renderAdminRoleCard();
+    pmRenderAccessDenied(activePage);
+    return;
   }
 
   // Render the sidebar role card from the signed-in user. Extracted so
@@ -138,6 +247,18 @@ function adminMount(activePage) {
 
   // Keep nav counts current after mount
   setTimeout(updateNavCounts, 0);
+
+  // Live dispatcher badge on the Assign Bookings link — refresh on mount and
+  // then poll. One interval per page load (each admin page is a full load).
+  setTimeout(updateAssignBadge, 0);
+  if (!window.__pmAssignPoll) {
+    window.__pmAssignPoll = setInterval(updateAssignBadge, 60 * 1000);
+  }
+
+  // In production, pull real data into the store so the list pages aren't
+  // blank. Pages that opt in (listen for 'pmStoreReady') re-render when it
+  // lands. No-op in demo mode (SEED_* fixtures are used instead).
+  pmHydrateAdminStoreFromApi();
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -369,7 +490,10 @@ function renderAdminRoleCard() {
   if (nameEl) nameEl.textContent = u.name || 'Admin';
   if (roleEl) {
     const cap   = s => (s || '').replace(/^./, c => c.toUpperCase());
-    const title = u.title || cap(u.role || 'admin');
+    // Prefer the actual admin sub-role label (Finance, Dispatcher, …) so the
+    // sidebar reflects what the person can actually do; fall back to their
+    // saved title or role.
+    const title = (u.sub_role && ADMIN_ROLE_LABELS[u.sub_role]) || u.title || cap(u.role || 'admin');
     const where = u.region || 'Paint Masters';
     roleEl.textContent = `${title} · ${where}`;
   }
@@ -648,6 +772,138 @@ function updateNavCounts() {
       pa.style.display = pending > 0 ? 'inline-block' : 'none';
     }
   }
+}
+
+// ──────────────────────────────────────────────────────────────
+// Dispatcher notification. The auto-assigner proposes a painter for every new
+// booking but stays silent until someone opens Assign Bookings. This badges
+// the sidebar "Assign Bookings" link (visible on every admin page) with the
+// number of bookings that need a dispatcher: proposals awaiting approval plus
+// anything still unassigned. Reads live counts from the API (GET /api/bookings
+// returns `total`), so it reflects real backend state, not the demo store.
+// Best-effort — if the backend is down or the link is hidden for this role,
+// it silently no-ops.
+// ──────────────────────────────────────────────────────────────
+async function updateAssignBadge() {
+  const badge = document.getElementById('nav-pending-assign');
+  if (!badge) return;   // link hidden for this sub-role, or not on an admin page
+  try {
+    const t = (typeof pmAuth !== 'undefined' && pmAuth.token) ? pmAuth.token() : null;
+    const headers = t ? { Authorization: 'Bearer ' + t } : {};
+    const [ap, un] = await Promise.all([
+      fetch('/api/bookings?status=pending_approval&limit=1',   { headers }),
+      fetch('/api/bookings?status=pending_assignment&limit=1', { headers }),
+    ]);
+    if (!ap.ok || !un.ok) return;
+    const [apj, unj] = await Promise.all([ap.json(), un.json()]);
+    const awaiting   = Number(apj.total) || 0;
+    const unassigned = Number(unj.total) || 0;
+    const count = awaiting + unassigned;
+    badge.textContent = String(count);
+    badge.title = `${awaiting} awaiting approval · ${unassigned} unassigned`;
+    badge.style.display = count > 0 ? 'inline-block' : 'none';
+  } catch (e) { /* backend unreachable — leave the badge as-is */ }
+}
+
+// ──────────────────────────────────────────────────────────────
+// Production data hydration. In demo mode the admin store is seeded from the
+// SEED_* fixtures. In production it starts empty, so the list pages (Paint
+// Masters, Customers, Job Board) would render blank. This fetches the real
+// data from the API and maps it into the store shape those pages already
+// read, then fires a 'pmStoreReady' event so a page can re-render with live
+// data. Best-effort: on any failure the store is left as-is.
+//
+// Note: /api/painters returns the ACTIVE roster only (suspended painters are
+// excluded), and lists are capped at 100 rows per the API's max page size —
+// pagination for larger rosters is a follow-up.
+// ──────────────────────────────────────────────────────────────
+function _pmInitials(name) {
+  return String(name || '').trim().split(/\s+/).map(w => w[0] || '').slice(0, 2).join('').toUpperCase() || '—';
+}
+function _pmStageFromStatus(s) {
+  switch (s) {
+    case 'pending_assignment':
+    case 'pending_approval': return 'new';
+    case 'pending':
+    case 'confirmed':        return 'scheduled';
+    case 'in_progress':      return 'on_site';
+    case 'qa_pending':       return 'qa';
+    case 'completed':        return 'completed';
+    default:                 return null;   // cancelled / unknown -> filtered out
+  }
+}
+function pmMapPainterToArtisan(p) {
+  return {
+    id: p.id, initials: _pmInitials(p.name), name: p.name,
+    specs: Array.isArray(p.services) ? p.services : [],
+    years: p.experience_years || 0, rating: p.avg_rating || 0, jobs: p.review_count || 0,
+    region: p.city || '', status: 'available',
+    color: p.avatar_color || '#2E70C9', phone: p.phone || '', email: p.email || '',
+    commissionRate: 90,
+  };
+}
+function pmMapBookingToJob(b) {
+  const stage = _pmStageFromStatus(b.status);
+  if (!stage) return null;
+  return {
+    id: b.id, ref: b.id, customer: b.customer_name || '—', service: b.service || '',
+    area: b.area_sqm || 0, amount: b.total || 0, stage,
+    assignedTo: (b.painter_id != null) ? b.painter_id : null,
+    date: String(b.job_date || '').slice(0, 10), window: 'All-day',
+    address: b.address || '', durationDays: b.duration_days || 1,
+    tags: b.service ? [b.service] : [],
+  };
+}
+function pmMapUserToCustomer(u) {
+  return { id: u.id, name: u.name, type: 'Customer', phone: u.phone || '', email: u.email || '',
+    city: '', jobs: 0, ltv: 0, lastJob: null, rating: 0 };
+}
+
+// Fetch every page of a paginated list endpoint (those returning { pages,
+// <key>: [...] }, capped at 100 rows/page). Page 1 is fetched first to learn
+// the page count, then the rest in parallel. maxPages bounds a runaway roster.
+// Returns the concatenated array, or null if the first request fails.
+async function _pmFetchAllPages(baseUrl, key, headers, opts) {
+  const pageSize = (opts && opts.pageSize) || 100;
+  const maxPages = (opts && opts.maxPages) || 50;
+  const first = await fetch(baseUrl + '?limit=' + pageSize + '&page=1', { headers });
+  if (!first.ok) return null;
+  const j0 = await first.json();
+  let rows = Array.isArray(j0[key]) ? j0[key].slice() : [];
+  const pages = Math.min(Number(j0.pages) || 1, maxPages);
+  if (pages > 1) {
+    const reqs = [];
+    for (let p = 2; p <= pages; p++) {
+      reqs.push(fetch(baseUrl + '?limit=' + pageSize + '&page=' + p, { headers }).then(r => r.ok ? r.json() : null));
+    }
+    const more = await Promise.all(reqs);
+    for (const m of more) { if (m && Array.isArray(m[key])) rows = rows.concat(m[key]); }
+  }
+  return rows;
+}
+
+async function pmHydrateAdminStoreFromApi() {
+  if (typeof PM_IS_PRODUCTION === 'undefined' || !PM_IS_PRODUCTION) return false;   // demo uses SEED_*
+  try {
+    const t = (typeof pmAuth !== 'undefined' && pmAuth.token) ? pmAuth.token() : null;
+    const headers = t ? { Authorization: 'Bearer ' + t } : {};
+    const [painters, bookings, cr] = await Promise.all([
+      _pmFetchAllPages('/api/painters', 'painters', headers),
+      _pmFetchAllPages('/api/bookings', 'bookings', headers),
+      fetch('/api/admin/users?role=customer', { headers }),
+    ]);
+    const store = getStore();
+    if (painters) store.artisans = painters.map(pmMapPainterToArtisan);
+    if (bookings) store.jobs     = bookings.map(pmMapBookingToJob).filter(Boolean);
+    if (cr.ok) { const j = await cr.json(); if (Array.isArray(j.users)) store.customers = j.users.map(pmMapUserToCustomer); }
+    // Mark artisans who are currently on an active job.
+    const activeStages = new Set(['dispatched', 'on_site', 'qa']);
+    const busy = new Set((store.jobs || []).filter(j => activeStages.has(j.stage) && j.assignedTo != null).map(j => j.assignedTo));
+    (store.artisans || []).forEach(a => { if (busy.has(a.id)) a.status = 'on_job'; });
+    saveState(store);
+    window.dispatchEvent(new CustomEvent('pmStoreReady'));
+    return true;
+  } catch (e) { return false; }
 }
 
 // Common: schedule nav count update after mount

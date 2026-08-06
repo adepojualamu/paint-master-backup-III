@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="en">
 <head>
+  <meta name="pm-mode" content="production">
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="icon" type="image/png" href="../assets/img/favicon.png" />
@@ -38,6 +39,15 @@
     .bp-logo img { width: 100%; height: 100%; object-fit: contain; padding: 6px; }
     .bp-logo .placeholder { font-size: 0.7rem; color: var(--ink-500); text-align: center; padding: 4px; }
     .bp-logo input[type=file] { display: none; }
+    /* Shown in place of a logo <img> whose file is missing / failed to load —
+       a styled brand wordmark so the row never renders a broken-image icon.
+       Used by both the editor rows and the preview grid. */
+    .bp-logo-wordmark {
+      font-family: var(--font-display, 'Bricolage Grotesque', system-ui, sans-serif);
+      font-weight: 800; color: var(--navy-900);
+      font-size: 0.86rem; line-height: 1.12; text-align: center;
+      padding: 4px; word-break: break-word;
+    }
     .bp-logo:hover { border-color: var(--navy-700); }
     .bp-logo:hover::after {
       content: 'Click to upload'; position: absolute; inset: 0;
@@ -123,33 +133,63 @@
   <script>
     adminMount('brand-partners');
 
-    const STORE_KEY = 'pm_brand_partners_v1';
+    // NOTE: every <script> on the page shares one global scope, and
+    // admin-shared.js already declares a top-level `const STORE_KEY`. Using
+    // the same name here is a duplicate-declaration SyntaxError that kills
+    // this whole inline script — so this key is deliberately namespaced.
+    const BP_STORE_KEY = 'pm_brand_partners_v1';
 
-    // Same default seed as the homepage hardcoded fallback in paint-catalog.js
-    // — kept in sync so "reset to defaults" lands customers back where they
-    // started before any admin edits.
-    const DEFAULT_PARTNERS = [
+    // The admin "defaults" must match what customers actually see. The
+    // homepage builds its partner grid from pmBrands — the central brand
+    // registry in shared.js (loaded above) — so we derive the defaults from
+    // that same source. This keeps "Reset to defaults" honest: it lands the
+    // line-up exactly where an un-edited homepage sits, and any brand added
+    // to pmBrands shows up here automatically with no edit to this file.
+    //
+    // STATIC_FALLBACK is only used if shared.js failed to load. It mirrors
+    // the full pmBrands line-up (featured brand first) so the editor still
+    // works standalone.
+    const STATIC_FALLBACK = [
+      { slug:'caparol', name:'Caparol', logoSrc:'assets/img/brands/caparol.png', blurb:'European-grade durability we trust on premium interiors.',     surfaces:'Premium interior emulsion', featured:true },
       { slug:'dulux',   name:'Dulux',   logoSrc:'assets/img/brands/dulux.png',   blurb:'Exterior weatherproof finishes. The Accra façade standard.',  surfaces:'Exterior · Walls' },
-      { slug:'caparol', name:'Caparol', logoSrc:'assets/img/brands/caparol.png', blurb:'European-grade durability we trust on premium interiors.',     surfaces:'Premium interior emulsion', featured: true },
       { slug:'leyland', name:'Leyland', logoSrc:'assets/img/brands/leyland.png', blurb:'Soft matte interiors that resist yellowing in tropical heat.', surfaces:'Interior matte' },
       { slug:'azar',    name:'Azar',    logoSrc:'assets/img/brands/azar.png',    blurb:'A local champion — fully tested in our QA program.',           surfaces:'Emulsion · Accent' },
       { slug:'coral',   name:'Coral',   logoSrc:'assets/img/brands/coral.png',   blurb:'High-sheen gloss for trim, doors, and metal frames.',          surfaces:'Gloss · Trim' },
       { slug:'shield',  name:'Shield',  logoSrc:'assets/img/brands/shield.png',  blurb:'Premium long-life coatings for façades and roofs.',           surfaces:'Specialty · Roof & Façade' },
+      { slug:'berger',  name:'Berger',  logoSrc:'assets/img/brands/berger.png',  blurb:'Sealer primers and emulsions for interior surfaces.',          surfaces:'Primer · Interior' },
+      { slug:'crown',   name:'Crown',   logoSrc:'assets/img/brands/crown.png',   blurb:'Specialty roof coatings and waterproofing systems.',           surfaces:'Roof · Specialty' },
     ];
+
+    // Returns a fresh copy of the default partner line-up, derived from
+    // pmBrands when available. list() puts featured brands first — the exact
+    // order the homepage grid renders in.
+    function bpDefaultPartners() {
+      if (typeof pmBrands !== 'undefined' && typeof pmBrands.list === 'function') {
+        return pmBrands.list().map(b => ({
+          slug:     b.slug,
+          name:     b.name,
+          logoSrc:  b.logo,
+          blurb:    b.blurb,
+          surfaces: b.surfaces,
+          featured: !!b.featured,
+        }));
+      }
+      return STATIC_FALLBACK.map(p => ({ ...p }));
+    }
 
     let partners = loadPartners();
 
     function loadPartners() {
       try {
-        const raw = JSON.parse(localStorage.getItem(STORE_KEY) || 'null');
+        const raw = JSON.parse(localStorage.getItem(BP_STORE_KEY) || 'null');
         if (Array.isArray(raw) && raw.length) return raw;
       } catch (_) {}
-      return DEFAULT_PARTNERS.map(p => ({ ...p }));
+      return bpDefaultPartners();
     }
 
     function savePartners() {
       try {
-        localStorage.setItem(STORE_KEY, JSON.stringify(partners));
+        localStorage.setItem(BP_STORE_KEY, JSON.stringify(partners));
         if (typeof pmToast === 'function') pmToast('Brand partners saved.', 'success');
       } catch (e) {
         alert('Could not save — localStorage may be full. Try removing some uploaded logos.');
@@ -159,7 +199,7 @@
 
     function bpResetDefaults() {
       if (!confirm('Reset the partner line-up to the default brands? Your custom edits will be lost.')) return;
-      localStorage.removeItem(STORE_KEY);
+      localStorage.removeItem(BP_STORE_KEY);
       partners = loadPartners();
       render();
       if (typeof pmToast === 'function') pmToast('Reset to defaults.', 'success');
@@ -265,6 +305,18 @@
       return src.startsWith('../') ? src : '../' + src;
     }
 
+    // onerror handler for logo <img>s. When a logo file is missing or fails
+    // to load, swap the broken image for a styled brand wordmark so the row
+    // and preview never show a broken-image icon. Mirrors the homepage
+    // brand-card behaviour in paint-catalog.js. textContent keeps it safe
+    // even if the brand name contains markup characters.
+    function bpLogoError(img) {
+      const span = document.createElement('span');
+      span.className = 'bp-logo-wordmark';
+      span.textContent = img.getAttribute('alt') || 'Logo';
+      img.replaceWith(span);
+    }
+
     function render() {
       const host = document.getElementById('bpList');
       host.innerHTML = partners.map((p, i) => `
@@ -273,7 +325,7 @@
 
           <label class="bp-logo" for="bp-logo-${i}">
             ${p.logoSrc
-              ? `<img src="${esc(toAdminPreview(p.logoSrc))}" alt="${esc(p.name)}" />`
+              ? `<img src="${esc(toAdminPreview(p.logoSrc))}" alt="${esc(p.name)}" onerror="bpLogoError(this)" />`
               : `<span class="placeholder">No logo<br/>click to upload</span>`}
             <input type="file" id="bp-logo-${i}" accept="image/*" onchange="bpUpload(${i}, this)" />
           </label>
@@ -338,7 +390,7 @@
         <div class="bp-preview-card">
           ${p.featured ? '<span class="feat-pill">★ Featured</span>' : ''}
           <div class="logo">
-            ${p.logoSrc ? `<img src="${esc(toAdminPreview(p.logoSrc))}" alt="${esc(p.name)}" />` : `<span style="font-family:var(--font-display);color:var(--navy-900);">${esc(p.name)}</span>`}
+            ${p.logoSrc ? `<img src="${esc(toAdminPreview(p.logoSrc))}" alt="${esc(p.name)}" onerror="bpLogoError(this)" />` : `<span class="bp-logo-wordmark">${esc(p.name)}</span>`}
           </div>
           <strong>${esc(p.name)}</strong>
           <div class="sub">${esc(p.surfaces || '')}</div>

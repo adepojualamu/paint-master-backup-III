@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="en">
 <head>
+  <meta name="pm-mode" content="production">
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="icon" type="image/png" href="../assets/img/favicon.png" />
@@ -62,6 +63,10 @@
   <script src="assets/admin-shared.js"></script>
   <script>
     adminMount('artisans');
+
+    // In production the store is hydrated from the API after mount; re-render
+    // the roster when that live data lands (no-op in demo mode).
+    window.addEventListener('pmStoreReady', function () { try { render(); } catch (e) {} });
 
     const f = { search:'', spec:'', region:'', status:'' };
 
@@ -207,6 +212,7 @@
 
                   <h3 style="font-size:1rem;margin-top:16px;">Quick actions</h3>
                   <div style="display:flex;flex-direction:column;gap:6px;">
+                    <button class="btn btn-primary" onclick="openEditPainter('${a.id}')">✏️ Edit details</button>
                     <button class="btn btn-outline" onclick="openArtisanMessage('${a.id}')">💬 Message ${a.name.split(' ')[0]}</button>
                     <button class="btn btn-outline" onclick="openArtisanCalendar('${a.id}')">📅 View full calendar</button>
                     <button class="btn btn-outline" onclick="openArtisanAssign('${a.id}')">📋 Assign new job</button>
@@ -234,6 +240,144 @@
     function closeArt() {
       document.getElementById('artModal').classList.add('hidden');
       document.getElementById('artModal').innerHTML = '';
+    }
+
+    // ─────────────────────────────────────────
+    // Edit Painter — admin form. Updates the local demo store and, when a
+    // backend painter_profile id is known (numeric), also fires
+    // PATCH /api/painters/:id so the change persists across containers.
+    // ─────────────────────────────────────────
+    function escAttr(s) {
+      return String(s == null ? '' : s)
+        .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+        .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+    }
+    function openEditPainter(id) {
+      const a = artisanById(id);
+      if (!a) return;
+      const host = document.getElementById('artModal');
+      host.classList.remove('hidden');
+      host.innerHTML = `
+        <div class="modal-backdrop" onclick="if(event.target===this)closeArt()">
+          <div class="modal" style="max-width:560px;">
+            <div class="modal-head">
+              <div>
+                <h3 style="margin:0;">Edit ${escAttr(a.name)}</h3>
+                <div class="small" style="color:var(--ink-500);">Changes save to this dashboard; if the painter exists on the backend, the same fields PATCH there too.</div>
+              </div>
+              <div class="close-btn" onclick="closeArt()">✕</div>
+            </div>
+            <div class="modal-body">
+              <div id="epAlert" style="display:none;background:#FEE2E2;border:1px solid #FCA5A5;color:#991B1B;border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:0.86rem;"></div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                <div>
+                  <label style="display:block;font-size:0.78rem;font-weight:700;color:var(--ink-500);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;">Name</label>
+                  <input id="epName" type="text" value="${escAttr(a.name)}" style="width:100%;padding:9px 11px;border:1.5px solid var(--ink-300);border-radius:8px;font:inherit;font-size:0.92rem;" />
+                </div>
+                <div>
+                  <label style="display:block;font-size:0.78rem;font-weight:700;color:var(--ink-500);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;">Phone</label>
+                  <input id="epPhone" type="tel" value="${escAttr(a.phone || '')}" style="width:100%;padding:9px 11px;border:1.5px solid var(--ink-300);border-radius:8px;font:inherit;font-size:0.92rem;" />
+                </div>
+                <div style="grid-column:1/-1;">
+                  <label style="display:block;font-size:0.78rem;font-weight:700;color:var(--ink-500);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;">Email</label>
+                  <input id="epEmail" type="email" value="${escAttr(a.email || '')}" style="width:100%;padding:9px 11px;border:1.5px solid var(--ink-300);border-radius:8px;font:inherit;font-size:0.92rem;" />
+                </div>
+                <div>
+                  <label style="display:block;font-size:0.78rem;font-weight:700;color:var(--ink-500);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;">Region / City</label>
+                  <input id="epCity" type="text" value="${escAttr(a.region || a.city || '')}" style="width:100%;padding:9px 11px;border:1.5px solid var(--ink-300);border-radius:8px;font:inherit;font-size:0.92rem;" />
+                </div>
+                <div>
+                  <label style="display:block;font-size:0.78rem;font-weight:700;color:var(--ink-500);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;">Years of experience</label>
+                  <input id="epYears" type="number" min="0" max="60" value="${Number(a.years) || 0}" style="width:100%;padding:9px 11px;border:1.5px solid var(--ink-300);border-radius:8px;font:inherit;font-size:0.92rem;" />
+                </div>
+                <div>
+                  <label style="display:block;font-size:0.78rem;font-weight:700;color:var(--ink-500);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;">Day rate (GHS)</label>
+                  <input id="epRate" type="number" min="50" max="2000" value="${Number(a.rate) || 0}" style="width:100%;padding:9px 11px;border:1.5px solid var(--ink-300);border-radius:8px;font:inherit;font-size:0.92rem;" />
+                </div>
+                <div>
+                  <label style="display:block;font-size:0.78rem;font-weight:700;color:var(--ink-500);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;">Commission rate (%)</label>
+                  <input id="epCommission" type="number" min="0" max="100" step="1" value="${Number(a.commissionRate) || 90}" style="width:100%;padding:9px 11px;border:1.5px solid var(--ink-300);border-radius:8px;font:inherit;font-size:0.92rem;" />
+                </div>
+              </div>
+              <div style="margin-top:14px;">
+                <label style="display:block;font-size:0.78rem;font-weight:700;color:var(--ink-500);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;">Bio (one line)</label>
+                <textarea id="epBio" rows="2" style="width:100%;padding:9px 11px;border:1.5px solid var(--ink-300);border-radius:8px;font:inherit;font-size:0.92rem;resize:vertical;">${escAttr(a.bio || '')}</textarea>
+              </div>
+            </div>
+            <div class="flex-between" style="padding:16px 20px;border-top:1px solid var(--ink-100);">
+              <button class="btn btn-ghost" onclick="openArtisan('${a.id}')">← Cancel</button>
+              <button class="btn btn-primary" onclick="savePainterEdits('${a.id}')">Save changes</button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    async function savePainterEdits(id) {
+      const a = artisanById(id); if (!a) return;
+      const patch = {
+        name:             document.getElementById('epName').value.trim(),
+        phone:            document.getElementById('epPhone').value.trim(),
+        email:            document.getElementById('epEmail').value.trim(),
+        city:             document.getElementById('epCity').value.trim(),
+        experience_years: Number(document.getElementById('epYears').value)      || 0,
+        rate_per_day:     Number(document.getElementById('epRate').value)       || 0,
+        bio:              document.getElementById('epBio').value.trim(),
+      };
+      const commission = Number(document.getElementById('epCommission').value);
+
+      // Mirror onto the local demo record so the dashboard reflects the edit
+      // immediately even without a backend round-trip.
+      mutate(store => {
+        const row = store.artisans.find(x => x.id === id);
+        if (!row) return;
+        row.name   = patch.name   || row.name;
+        row.phone  = patch.phone  || row.phone;
+        row.email  = patch.email  || row.email;
+        row.region = patch.city   || row.region;
+        row.city   = patch.city   || row.city;
+        row.years  = patch.experience_years;
+        row.rate   = patch.rate_per_day;
+        row.bio    = patch.bio    || row.bio;
+        if (Number.isFinite(commission)) row.commissionRate = commission;
+        row.initials = row.name.split(/\s+/).filter(Boolean).slice(0,2).map(s => s[0].toUpperCase()).join('');
+      });
+
+      // Best-effort backend PATCH. Demo ids like 'a3' won't have a backing
+      // painter_profiles row; the call fails harmlessly and we surface
+      // whichever message the API returned.
+      const apiId = a.backendId || a.painter_profile_id || (/^\d+$/.test(String(id)) ? id : null);
+      if (apiId) {
+        try {
+          const t = (typeof pmAuth !== 'undefined' && pmAuth.token) ? pmAuth.token() : null;
+          const res = await fetch(`/api/painters/${encodeURIComponent(apiId)}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json', ...(t ? { 'Authorization': `Bearer ${t}` } : {}) },
+            body: JSON.stringify(patch),
+          });
+          const j = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            const alertHost = document.getElementById('epAlert');
+            if (alertHost) {
+              alertHost.style.display = 'block';
+              alertHost.textContent = `Saved locally, but backend rejected the update: ${j && j.message ? j.message : ('HTTP ' + res.status)}`;
+            }
+            return;
+          }
+        } catch (e) {
+          const alertHost = document.getElementById('epAlert');
+          if (alertHost) {
+            alertHost.style.display = 'block';
+            alertHost.textContent = `Saved locally — backend not reachable (${e && e.message || 'unknown error'}).`;
+          }
+          return;
+        }
+      }
+
+      if (typeof pmToast === 'function') pmToast(`${patch.name || a.name}'s details saved.`, 'success');
+      else if (typeof toast === 'function') toast(`${patch.name || a.name}'s details saved.`);
+      openArtisan(id);
+      render();
     }
     function toggleStatus(id) {
       const a = getStore().artisans.find(x => x.id === id);

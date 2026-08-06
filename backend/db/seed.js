@@ -19,7 +19,10 @@ const PAINTERS = [
 ];
 const NON_PAINTERS = [
   { name: 'Ama Owusu',      phone: '0244200001', email: 'ama@example.com',         role: 'customer' },
-  { name: 'Akosua Boateng', phone: '0244000000', email: 'akosua@paintmasters.gh',  role: 'admin'    },
+  // The bootstrap admin is granted super_admin so a fresh install can
+  // dispatch jobs and approve QA out of the box without needing a second
+  // admin to grant them a sub-role.
+  { name: 'Akosua Boateng', phone: '0244000000', email: 'akosua@paintmasters.gh',  role: 'admin', sub_role: 'super_admin' },
 ];
 
 function seed() {
@@ -47,8 +50,10 @@ function seed() {
         color: p.color, rating: p.rating, reviews: p.reviews,
       });
     }
+    const setSubRole = db.prepare('UPDATE users SET sub_role = ? WHERE id = ?');
     for (const u of NON_PAINTERS) {
-      insertUser.run({ name: u.name, phone: u.phone, email: u.email, password: hash, role: u.role });
+      const r = insertUser.run({ name: u.name, phone: u.phone, email: u.email, password: hash, role: u.role });
+      if (u.sub_role) setSubRole.run(u.sub_role, r.lastInsertRowid);
     }
 
     // Sample booking + review (as before — keeps the demo realistic)

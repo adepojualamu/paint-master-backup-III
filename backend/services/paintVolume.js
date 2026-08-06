@@ -160,6 +160,8 @@ function listEstimates(quote_id) {
 
 /**
  * Dispatcher (or super_admin) confirms the volume for a quote — gate cleared.
+ * Also writes a paint_reservations row per estimate line so the inventory
+ * manager sees the committed stock immediately.
  */
 function confirm({ quote_id, user_id }) {
   const quote = db.prepare('SELECT id, volume_status FROM quotes WHERE id = ?').get(quote_id);
@@ -171,24 +173,95 @@ function confirm({ quote_id, user_id }) {
   if (lines.length === 0) {
     throw badRequest('Cannot confirm — no volume estimates have been entered for this quote.');
   }
-  db.prepare(`
-    UPDATE quotes SET volume_status = 'confirmed',
-                      volume_confirmed_by = ?,
-                      volume_confirmed_at = datetime('now')
-     WHERE id = ?
-  `).run(user_id, quote_id);
+
+  // Confirm + reservations in one transaction. If anything errors midway, we
+  // don't want a 'confirmed' quote with only some of its reservations written.
+  const tx = db.transaction(() => {
+    db.prepare(`
+      UPDATE quotes SET volume_status = 'confirmed',
+                        volume_confirmed_by = ?,
+                        volume_confirmed_at = datetime('now')
+       WHERE id = ?
+    `).run(user_id, quote_id);
+
+    // Defensive cleanup of any leftover 'reserved' rows for this quote.
+    // The re-confirm path is blocked above; this just guards against bad data.
+    db.prepare("DELETE FROM paint_reservations WHERE quote_id = ? AND status = 'reserved'").run(quote_id);
+
+    const insert = db.prepare(`
+      INSERT INTO paint_reservations
+        (quote_id, paint_product_id, estimate_id, litres_reserved,
+         buckets_reserved, cost_reserved, reserved_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `);
+    for (const line of lines) {
+      insert.run(
+        quote_id, line.paint_product_id, line.id,
+        line.litres_needed, line.buckets_needed, line.cost_estimate,
+        user_id || null,
+      );
+    }
+  });
+  tx();
+
   return { quote_id, status: 'confirmed', lines };
+}
+
+/**
+ * Flip every 'reserved' row on a quote to 'released'. Called when a quote
+ * is rejected after the dispatcher already confirmed, or when a booking
+ * sourced from this quote is cancelled. Idempotent.
+ */
+function releaseReservations({ quote_id, reason }) {
+  const n = db.prepare(`
+    UPDATE paint_reservations
+       SET status = 'released',
+           released_at = datetime('now'),
+           released_reason = ?
+     WHERE quote_id = ? AND status = 'reserved'
+  `).run(reason || null, quote_id).changes;
+  return { quote_id, released: n };
+}
+
+/**
+ * Flip every 'reserved' row on a quote to 'consumed'. Called when the linked
+ * booking is marked complete. Idempotent.
+ */
+function consumeReservations({ quote_id }) {
+  const n = db.prepare(`
+    UPDATE paint_reservations
+       SET status = 'consumed',
+           consumed_at = datetime('now')
+     WHERE quote_id = ? AND status = 'reserved'
+  `).run(quote_id).changes;
+  return { quote_id, consumed: n };
 }
 
 function reject({ quote_id, user_id, reason }) {
   const quote = db.prepare('SELECT id, volume_status FROM quotes WHERE id = ?').get(quote_id);
   if (!quote) throw notFound(`Quote ${quote_id} not found`);
-  db.prepare(`
-    UPDATE quotes SET volume_status = 'rejected',
-                      volume_confirmed_by = ?,
-                      volume_confirmed_at = datetime('now')
-     WHERE id = ?
-  `).run(user_id, quote_id);
+
+  // Reject + release any reservations the dispatcher had set up. Wrapped
+  // in a transaction so a rejected quote can never carry orphaned 'reserved'
+  // rows that would inflate the inventory manager's committed-stock view.
+  const tx = db.transaction(() => {
+    db.prepare(`
+      UPDATE quotes SET volume_status = 'rejected',
+                        volume_confirmed_by = ?,
+                        volume_confirmed_at = datetime('now')
+       WHERE id = ?
+    `).run(user_id, quote_id);
+
+    db.prepare(`
+      UPDATE paint_reservations
+         SET status = 'released',
+             released_at = datetime('now'),
+             released_reason = ?
+       WHERE quote_id = ? AND status = 'reserved'
+    `).run(reason || 'volume rejected', quote_id);
+  });
+  tx();
+
   return { quote_id, status: 'rejected', reason: reason || null };
 }
 
@@ -218,4 +291,6 @@ module.exports = {
   confirm,
   reject,
   assertVolumeConfirmed,
+  releaseReservations,
+  consumeReservations,
 };

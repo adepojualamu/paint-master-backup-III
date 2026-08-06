@@ -9,23 +9,87 @@ const cors        = require('cors');
 const helmet      = require('helmet');
 const rateLimit   = require('express-rate-limit');
 
+const config = require('./config');
 const app  = express();
 const PORT = process.env.PORT || 3000;
 
+// ===== TRUST PROXY =====
+// We expect production deploys to sit behind a TLS-terminating reverse proxy
+// (nginx / Render / Caddy). Trusting one hop lets Express read the original
+// client IP from X-Forwarded-For (so express-rate-limit keys per real
+// client, not per proxy) and the original scheme from X-Forwarded-Proto (so
+// the HTTPS check below sees `req.secure === true` even though the inbound
+// connection to Node is plaintext).
+app.set('trust proxy', 1);
+
+// ===== HTTPS ENFORCEMENT (production only) =====
+// HSTS already tells browsers to upgrade, but it only takes effect AFTER a
+// successful HTTPS visit. A brand-new client, a misconfigured cron, or a
+// curl pipe can still hit plaintext http://. We close that window here:
+//   - GET / HEAD get a permanent redirect to https:// (safe to bounce).
+//   - Anything that might carry a credential or body gets a 403 — we never
+//     accept a Bearer token, password, or payment payload over cleartext.
+// Dev / test keep the plaintext path so local testing isn't broken.
+if (config.isProd) {
+  app.use((req, res, next) => {
+    if (req.secure) return next();
+    if (req.method === 'GET' || req.method === 'HEAD') {
+      return res.redirect(301, 'https://' + req.headers.host + req.originalUrl);
+    }
+    return res.status(403).json({
+      success: false,
+      message: 'HTTPS is required. Retry with https://.',
+    });
+  });
+}
+
 // ===== SECURITY HEADERS =====
-// Helmet sets a sensible default of HTTP security headers
-// (X-Content-Type-Options, X-Frame-Options, Strict-Transport-Security, etc.)
-//
-// CSP is disabled here because the customer + admin pages use heavy inline
-// <style> and <script> blocks. In production we'll move those to external
-// files and re-enable a strict policy. For now, the rest of helmet's headers
-// stay on; only content-security-policy is off.
-app.use(helmet({ contentSecurityPolicy: false }));
+// Helmet sets a sensible default of HTTP security headers, plus a
+// transitional Content-Security-Policy. The customer + admin pages still
+// carry heavy inline <style> and <script> blocks, so 'unsafe-inline' stays
+// while those move to external files; the rest of the policy is meaningful
+// — external scripts can only load from the same origin, so a reflected /
+// stored XSS that injects <script src="https://evil.example/x.js"> still
+// gets blocked at the browser. Google Fonts are explicitly allow-listed.
+app.use(helmet({
+  contentSecurityPolicy: {
+    useDefaults: true,
+    directives: {
+      'default-src':  ["'self'"],
+      'script-src':   ["'self'", "'unsafe-inline'"],
+      // Helmet's useDefaults ships `script-src-attr 'none'`, which blocks
+      // inline event-handler attributes (onclick=, oninput=, …) even when
+      // script-src allows 'unsafe-inline'. Our pages wire buttons with inline
+      // onclick handlers (e.g. the quote wizard's Next/Back), so without this
+      // the browser silently refuses every one of them and the buttons feel
+      // dead. Allow inline handlers for now; drop this alongside the inline-JS
+      // cleanup that removes 'unsafe-inline' above.
+      'script-src-attr': ["'unsafe-inline'"],
+      'style-src':    ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+      'font-src':     ["'self'", 'https://fonts.gstatic.com', 'data:'],
+      'img-src':      ["'self'", 'data:', 'blob:'],
+      'connect-src':  ["'self'"],
+      'object-src':   ["'none'"],
+      'base-uri':     ["'self'"],
+      'frame-ancestors': ["'self'"],
+    },
+  },
+  // Strict-Transport-Security: 1 year + subdomains + preload-eligible. The
+  // browser only honours HSTS over HTTPS, so this is a no-op in dev (HTTP);
+  // in production behind a TLS-terminating proxy it pins clients to HTTPS
+  // and qualifies the host for the HSTS preload list.
+  strictTransportSecurity: {
+    maxAge:            31536000,   // 1 year, in seconds
+    includeSubDomains: true,
+    preload:           true,
+  },
+}));
 
 // ===== CORS =====
-// In production we'd lock this down to the customer + admin frontend origins.
-// For now (development) we allow all so the static HTML can call the API.
-app.use(cors());
+// Production honours the CORS_ORIGINS allowlist defined in config/cors.js.
+// Dev / test deliberately allow all so the static HTML can call the API.
+const corsOptions = require('./config/cors')();
+app.use(cors(corsOptions));
 
 // ===== BODY PARSERS =====
 // 100kb cap is plenty for JSON booking payloads and prevents trivial abuse.
@@ -85,6 +149,21 @@ try {
   console.error('Server will continue, but DB-backed routes may 500. Run `node db/migrate.js` manually.');
 }
 
+// Auto-seed an empty database on first boot so a fresh install (and the
+// Docker container in particular) lands with a working admin + painter
+// roster. The seed itself is idempotent: it short-circuits when users
+// already exist, so subsequent boots are no-ops.
+try {
+  const seed = require('./db/seed');
+  const result = seed();
+  if (result && result.seeded) {
+    console.log(`[seed] inserted ${result.painters} painters + ${result.others} other accounts`);
+  }
+} catch (err) {
+  console.error('[seed] FAILED:', err.message);
+  console.error('Server will continue; sign-in will only work for accounts created later.');
+}
+
 const authRouter     = require('./routes/auth');
 const paintersRouter = require('./routes/painters');
 const bookingsRouter = require('./routes/bookings');
@@ -92,9 +171,11 @@ const reviewsRouter  = require('./routes/reviews');
 const paymentsRouter = require('./routes/payments');
 const uploadsRouter    = require('./routes/uploads');
 const adminUsersRouter = require('./routes/admin-users');
-const quotesRouter      = require('./routes/quotes');
-const paintVolumeRouter = require('./routes/paint-volume');
+const adminPricingRouter = require('./routes/admin-pricing');
+const quotesRouter        = require('./routes/quotes');
+const paintVolumeRouter   = require('./routes/paint-volume');
 const paintProductsRouter = require('./routes/paint-products');
+const financeRouter       = require('./routes/finance');
 
 app.use('/api/auth',     authRouter);
 app.use('/api/painters', paintersRouter);
@@ -104,9 +185,11 @@ app.use('/api/payments', paymentsRouter);
 app.use('/api/uploads',  uploadsRouter);
 app.use('/api/admin/uploads', uploadsRouter);  // share the same router; the moderation paths are under /admin/* inside the file
 app.use('/api/admin/users',   adminUsersRouter);
+app.use('/api/admin/pricing', adminPricingRouter);
 app.use('/api/quotes',         quotesRouter);
 app.use('/api/paint-volume',   paintVolumeRouter);
 app.use('/api/paint-products', paintProductsRouter);
+app.use('/api/finance',        financeRouter);
 
 // ===== API INFO =====
 // Programmatic clients can hit /api for a list of endpoints. The browser
@@ -157,6 +240,20 @@ app.use((req, res) => {
 const { errorHandler } = require('./middleware/error');
 app.use(errorHandler);
 
+// ===== NOTIFICATION OUTBOX WORKER =====
+// Drains notifications_outbox in the background — every route handler
+// just calls notifications.emit() and the worker handles the actual
+// Hubtel/Resend dispatch. Starts here (not on import) so tests that
+// require server.js without listening don't get a stray timer.
+const notifyWorker = require('./services/notifyWorker');
+
+// ===== AUTO-ASSIGNMENT SWEEP =====
+// Bookings are auto-proposed a painter at creation time, but if nobody was free
+// then they stay in the manual queue. This background sweep retries them
+// periodically (e.g. once a painter finishes a job and frees up), proposing a
+// painter for a dispatcher to approve. Same lifecycle as the notify worker.
+const autoAssign = require('./services/autoAssign');
+
 // ===== START SERVER =====
 // Only listen when run directly — lets tests import `app` without a port collision.
 if (require.main === module) {
@@ -167,4 +264,7 @@ if (require.main === module) {
     console.log(`   API root:      http://localhost:${PORT}/api`);
     console.log('');
   });
+  // Boot the background workers only when the server is actually serving.
+  notifyWorker.start();
+  autoAssign.start();
 }

@@ -19,6 +19,7 @@ const validate      = require('../middleware/validate');
 const asyncHandler  = require('../middleware/asyncHandler');
 const { protect, restrictTo, requireSubRole } = require('../middleware/auth');
 const paintVolume   = require('../services/paintVolume');
+const notifications = require('../services/notifications');
 const { notFound }  = require('../utils/errors');
 
 const router = express.Router();
@@ -90,6 +91,14 @@ router.post('/quotes/:id/confirm', protect, restrictTo('admin'),
   requireSubRole('dispatcher'),
   asyncHandler(async (req, res) => {
     const result = paintVolume.confirm({ quote_id: req.params.id, user_id: req.user.id });
+    try {
+      const customer = db.prepare(`
+        SELECT u.id, u.name, u.phone, u.email
+          FROM quotes q LEFT JOIN users u ON u.id = q.customer_id
+         WHERE q.id = ?
+      `).get(req.params.id);
+      if (customer) notifications.emit('volume.confirmed', { quote_id: req.params.id, customer });
+    } catch (_) {}
     res.json({ success: true, ...result });
   })
 );
@@ -105,6 +114,18 @@ router.post('/quotes/:id/reject', protect, restrictTo('admin'),
       user_id:  req.user.id,
       reason:   req.body.reason,
     });
+    try {
+      const customer = db.prepare(`
+        SELECT u.id, u.name, u.phone, u.email
+          FROM quotes q LEFT JOIN users u ON u.id = q.customer_id
+         WHERE q.id = ?
+      `).get(req.params.id);
+      if (customer) notifications.emit('volume.rejected', {
+        quote_id: req.params.id,
+        customer,
+        reason: req.body.reason,
+      });
+    } catch (_) {}
     res.json({ success: true, ...result });
   })
 );

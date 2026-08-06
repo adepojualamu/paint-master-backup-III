@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="en">
 <head>
+  <meta name="pm-mode" content="production">
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="icon" type="image/png" href="assets/img/favicon.png" />
@@ -292,7 +293,7 @@
           </div>
 
           <div class="total" id="qTotal">GHS 0 <small>incl. VAT</small></div>
-          <div class="small" style="color:rgba(255,255,255,0.7);" id="qRange">Range: —</div>
+          <div class="small" style="color:rgba(255,255,255,0.7);" id="qRange">Fixed price — locked when you book.</div>
 
           <div class="surface-preview mt-16" id="qPreview">
             Choose a service to begin.
@@ -303,10 +304,12 @@
             <div class="summary-row"><span>Total paintable area</span><strong id="sArea">— m²</strong></div>
             <div class="summary-row"><span>Labour</span><strong id="sLabour">GHS 0</strong></div>
             <div class="summary-row"><span>Materials</span><strong id="sMaterials">GHS 0</strong></div>
-            <div class="summary-row"><span>Condition adjustment</span><strong id="sPrep">GHS 0</strong></div>
-            <div class="summary-row"><span>Add-ons</span><strong id="sAddons">GHS 0</strong></div>
-            <div class="summary-row"><span>Travel</span><strong id="sTravel">GHS 0</strong></div>
+            <div class="summary-row"><span>Platform fee</span><strong id="sFee">GHS 0</strong></div>
+            <div class="summary-row"><span>Subtotal (ex. VAT)</span><strong id="sSubtotal">GHS 0</strong></div>
+            <div class="summary-row"><span>VAT (12.5%)</span><strong id="sVat">GHS 0</strong></div>
+            <div class="summary-row" style="border-top:1px solid rgba(255,255,255,0.18); margin-top:6px; padding-top:8px; font-size:1.02rem;"><span>Total (incl. VAT)</span><strong id="sTotal">GHS 0</strong></div>
           </div>
+          <p class="small" style="margin:10px 0 0; color:rgba(255,255,255,0.6);">Prices include 12.5% VAT — the total above is exactly what you'll be charged.</p>
 
           <div style="margin-top:16px;">
             <button class="btn btn-gold btn-block" id="qBookBtn" onclick="proceedToBooking()">Book this quote →</button>
@@ -388,7 +391,13 @@
       // { paint_product_id, name, area_sqm, coats, litres_needed, buckets_needed, cost_estimate }.
       // Booking.html POSTs these to /api/paint-volume/quotes/:id/estimates
       // once the quote ID exists, queuing the dispatcher review.
-      paintLines: []
+      paintLines: [],
+      // CRITICAL: the summary stays blank until the customer actively
+      // changes a spec. The pre-filled dimensions / surface / finish above
+      // produce a believable number against absolutely no input — surfacing
+      // that as "your quote" before the customer has typed anything would
+      // (rightly) feel like an arbitrary price was assigned to them.
+      touched: false
     };
 
     // ---------- Paint products catalogue (mirrors backend seed in
@@ -579,7 +588,28 @@
       return area * rooms;
     }
 
+    // ---------- Real material cost from paint lines ----------
+    // Sums the bucket-based product math across every paint line that has
+    // a valid product + area + coats. When the customer has actually
+    // specified paints, THIS is what their materials cost — not the
+    // multiplier estimate. Returns null when no usable lines exist.
+    function realMaterialsCost() {
+      if (!state.paintLines || !state.paintLines.length) return null;
+      let total = 0, anyOk = false;
+      for (const line of state.paintLines) {
+        const r = pvComputeLine(line);
+        if (r.ok && Number.isFinite(r.cost)) { total += r.cost; anyOk = true; }
+      }
+      return anyOk ? Math.round(total * 100) / 100 : null;
+    }
+
     // ---------- Quote calc ----------
+    // DEPRECATED — no longer the pricing path. Pricing now comes from the
+    // canonical server engine (POST /api/quotes/preview) via pmServerQuote /
+    // pmLocalQuote, so the price shown equals the price charged. This old
+    // multiplier model (surface × finish × tier × scope × condition + add-ons +
+    // travel + VAT) is kept only for reference and has no callers. Do not wire
+    // anything back to it; edit the rate card (admin/pricing.html) instead.
     function calcQuote() {
       const svc = SERVICES[state.category].find(s => s.id === state.serviceId) || SERVICES[state.category][0];
       const area = calcArea();
@@ -594,7 +624,9 @@
       const materialRate = svc.material * tierM * surfaceM * finishM;
 
       const labourBase   = laborRate * area;
-      const materialBase = materialRate * area;
+      const realMaterials = realMaterialsCost();
+      const materialBase  = realMaterials != null ? realMaterials : (materialRate * area);
+      const materialsSource = realMaterials != null ? 'paint-lines' : 'estimate';
 
       // Prep fee derived from condition multiplier relative to "good"
       const prep = ((condM - 1)) * (labourBase + materialBase);
@@ -621,6 +653,7 @@
         svc, area,
         labour: labourBase,
         materials: materialBase,
+        materialsSource,
         prep,
         addons: addonSub,
         travel: travelSub,
@@ -630,28 +663,118 @@
       };
     }
 
-    // ---------- Render summary ----------
-    function render() {
-      const q = calcQuote();
-      document.getElementById('qTotal').innerHTML = pmFormatGHS(q.total) + ' <small>incl. VAT</small>';
-      document.getElementById('qRange').textContent = `Range: ${pmFormatGHS(q.low)} – ${pmFormatGHS(q.high)}`;
-      document.getElementById('sService').textContent = q.svc.name;
-      document.getElementById('sArea').textContent = q.area.toFixed(1) + ' m²';
-      document.getElementById('sLabour').textContent = pmFormatGHS(q.labour);
-      document.getElementById('sMaterials').textContent = pmFormatGHS(q.materials);
-      document.getElementById('sPrep').textContent = pmFormatGHS(q.prep);
-      document.getElementById('sAddons').textContent = pmFormatGHS(q.addons);
-      document.getElementById('sTravel').textContent = pmFormatGHS(q.travel);
+    // ---------- Canonical pricing (server is the source of truth) ----------
+    // The quote total shown here is produced by the SAME engine + rate card
+    // that charges the customer (POST /api/quotes/preview), so the price they
+    // see is the price they pay. pmServerQuote / pmLocalQuote live in shared.js.
+    let lastPricing = null;     // last canonical breakdown shown
+    let lastMeta    = null;     // { service, area_sqm, duration_days, materials_included }
+    let _quoteReq   = 0;        // race guard for out-of-order async responses
+    let _quoteTimer = null;     // debounce timer
 
-      // Preview sentence
+    // Build the canonical inputs from the current form state. The rich chips
+    // (surface / finish / tier / condition / add-ons) inform the painter's job
+    // brief but no longer move the price — the server prices on service + area.
+    function currentQuoteInputs() {
+      const area = Math.max(5, Math.round(calcArea() * 10) / 10);
+      return {
+        service: pmMapServiceToBackend(state.category, state.serviceId),
+        area_sqm: area,
+        duration_days: pmEstimateDurationDays(area),
+        materials_included: true,
+      };
+    }
+
+    function placeholderSummary() {
+      document.getElementById('qTotal').innerHTML   = '<span style="opacity:0.75;">—</span> <small>incl. VAT</small>';
+      document.getElementById('qRange').textContent = 'Tell us about your space below to see your quote.';
+      document.getElementById('qPreview').textContent = 'Choose a service and enter your room dimensions to begin.';
+      ['sService','sArea','sLabour','sMaterials','sFee','sSubtotal','sVat','sTotal'].forEach(id => {
+        document.getElementById(id).textContent = id === 'sArea' ? '— m²' : '—';
+      });
+      const bookBtn = document.getElementById('qBookBtn');
+      if (bookBtn) { bookBtn.disabled = true; bookBtn.style.opacity = '0.55'; bookBtn.style.cursor = 'not-allowed'; }
+    }
+
+    // Paint the summary card from a canonical breakdown. `pending` dims the
+    // total slightly while the authoritative server number is in flight.
+    function renderSummary(pricing, meta, pending) {
+      const bookBtn = document.getElementById('qBookBtn');
+      if (bookBtn) { bookBtn.disabled = false; bookBtn.style.opacity = pending ? '0.85' : ''; bookBtn.style.cursor = ''; }
+
+      const svc = (SERVICES[state.category].find(s => s.id === state.serviceId) || SERVICES[state.category][0]);
+      document.getElementById('qTotal').innerHTML = pmFormatGHS(pricing.total) + ' <small>incl. VAT</small>';
+      document.getElementById('qRange').textContent = pending ? 'Updating…' : 'Fixed price — locked when you book.';
+      document.getElementById('sService').textContent = svc.name;
+      document.getElementById('sArea').textContent = Number(meta.area_sqm).toFixed(1) + ' m²';
+      document.getElementById('sLabour').textContent = pmFormatGHS(pricing.labour);
+      const matLine = document.getElementById('sMaterials');
+      matLine.textContent = pmFormatGHS(pricing.materials);
+      matLine.title = 'Platform-supplied paint + primer. This is the amount charged; the paint-product step is an itemised breakdown of it.';
+      document.getElementById('sFee').textContent = pmFormatGHS(pricing.platform_fee);
+      const exVat = (pricing.total_ex_vat != null) ? pricing.total_ex_vat : (pricing.total - pricing.vat);
+      document.getElementById('sSubtotal').textContent = pmFormatGHS(exVat);
+      document.getElementById('sVat').textContent = pmFormatGHS(pricing.vat);
+      document.getElementById('sTotal').textContent = pmFormatGHS(pricing.total);
+
       const catName = { residential:'residential', decorative:'decorative', commercial:'commercial', specialty:'specialty' }[state.category];
       const tierName = { standard:'Standard-grade', premium:'Premium', luxury:'Luxury / imported' }[state.tier];
       const roomsTxt = state.rooms > 1 ? `${state.rooms} similar rooms` : 'a single room';
       document.getElementById('qPreview').innerHTML =
-        `<strong>${q.svc.name}</strong> (${catName}) in ${roomsTxt}. ~${q.area.toFixed(0)} m² covered with <strong>${tierName}</strong> paint, ${state.finish} finish. Prep level: <strong>${state.condition}</strong>.`;
+        `<strong>${svc.name}</strong> (${catName}) in ${roomsTxt}. ~${Number(meta.area_sqm).toFixed(0)} m² covered with <strong>${tierName}</strong> paint, ${state.finish} finish. Prep level: <strong>${state.condition}</strong>.`;
+    }
 
-      // Save for booking page
-      pmSaveQuote({ ...structuredClone({ ...state, addons: [...state.addons] }), quote: q, timestamp: Date.now() });
+    // Persist the canonical quote so booking.html charges exactly what was shown.
+    function persistQuote(pricing, meta) {
+      pmSaveQuote({
+        category: state.category, serviceId: state.serviceId,
+        service: meta.service, area_sqm: meta.area_sqm, duration_days: meta.duration_days,
+        materials_included: true,
+        // spec info for the painter's brief (no longer price-affecting)
+        surface: state.surface, condition: state.condition, finish: state.finish,
+        tier: state.tier, scope: state.scope, rooms: state.rooms,
+        paintLines: (state.paintLines || []).map(l => ({ ...l })),
+        pricing,
+        timestamp: Date.now(),
+      });
+    }
+
+    // Debounced fetch of the authoritative server quote. Guards against
+    // out-of-order responses so a fast typist always ends on the latest number.
+    function scheduleServerQuote() {
+      clearTimeout(_quoteTimer);
+      _quoteTimer = setTimeout(async () => {
+        const meta = currentQuoteInputs();
+        const reqId = ++_quoteReq;
+        const { pricing } = await pmServerQuote(meta);
+        if (reqId !== _quoteReq) return;     // a newer request superseded this one
+        lastPricing = pricing; lastMeta = meta;
+        renderSummary(pricing, meta, false);
+        persistQuote(pricing, meta);
+      }, 250);
+    }
+
+    // ---------- Render summary ----------
+    function render() {
+      // Before the customer touches anything, stay in the placeholder state —
+      // showing a price computed from default form values feels arbitrary.
+      if (!state.touched) { placeholderSummary(); return; }
+
+      // Instant local estimate (same formula + rates as the server) for snappy
+      // feedback, then the debounced server call confirms the authoritative
+      // number. They agree unless the operator just changed the rate card.
+      const meta = currentQuoteInputs();
+      const localPricing = pmLocalQuote(meta);
+      lastPricing = localPricing; lastMeta = meta;
+      renderSummary(localPricing, meta, true);
+      scheduleServerQuote();
+    }
+
+    // Marks the form as touched and re-renders. Wired below to every input,
+    // select, chip click — anything the customer interacts with.
+    function touchAndRender() {
+      state.touched = true;
+      render();
     }
 
     // ---------- Wire up controls ----------
@@ -712,34 +835,50 @@
       // Entering the paint step for the first time — auto-add a line so the
       // customer sees the picker instead of just an empty CTA. Pre-filled
       // with their computed area so most customers can just glance and move on.
-      if (n === 4 && state.paintLines.length === 0) pvAddLine();
+      if (n === 4 && state.paintLines.length === 0) {
+        // Defensive: a render error here must never make the "Next" button feel
+        // dead. The panel has already switched above; log and continue.
+        try { pvAddLine(); } catch (e) { console.error('pvAddLine failed:', e); }
+      }
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
     // Click step tab to jump
     document.querySelectorAll('#qSteps button').forEach(b => b.addEventListener('click', () => qNext(Number(b.dataset.step))));
 
     function proceedToBooking() {
-      const q = calcQuote();
-      if (q.total < 100) {
+      const meta = currentQuoteInputs();
+      // Use the last canonical breakdown (server or local mirror); fall back to
+      // a fresh local compute if the customer somehow reaches here untouched.
+      const pricing = lastPricing || pmLocalQuote(meta);
+      if (!pricing || pricing.total < 100) {
         pmToast('Please complete the form — the quote looks too low.', 'warn');
         return;
       }
-      // Persist current state with addons as array. paintLines goes along for
-      // the ride; booking.html POSTs them to /api/paint-volume/quotes/:id/estimates
-      // after the backend quote is created, queueing the dispatcher review.
-      pmSaveQuote({
-        ...state,
-        addons: [...state.addons],
-        paintLines: state.paintLines.map(l => ({ ...l })),
-        quote: q,
-        timestamp: Date.now()
-      });
+      // Persist the canonical quote (paintLines ride along for the dispatcher's
+      // volume review). booking.html re-derives the same inputs server-side, so
+      // the customer is charged exactly what they saw here.
+      persistQuote(pricing, lastMeta || meta);
       window.location.href = 'booking.html';
     }
 
     // ---------- Init ----------
     populateServices();
     pvBindEvents();
+    // Warm the rate-card cache so the instant local estimate matches the server
+    // even before the first /preview round-trip; refresh the view if needed.
+    pmLoadRateCard().then(() => { if (state.touched) render(); });
+    // First interaction flips state.touched, which is what the placeholder
+    // gating in render() reads. Capture phase so we catch the event before
+    // the existing input / chip / addon handlers run their own render().
+    ['input', 'change'].forEach(ev => {
+      document.addEventListener(ev, () => { state.touched = true; }, true);
+    });
+    document.addEventListener('click', (e) => {
+      if (e.target.closest('.chip, .chip-group button, [data-chip], [data-room], [data-addon]')) {
+        state.touched = true;
+      }
+    }, true);
+
     render();
   </script>
 </body>

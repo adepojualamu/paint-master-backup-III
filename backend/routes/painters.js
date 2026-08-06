@@ -10,7 +10,7 @@ const C           = require('../config/constants');
 const validate    = require('../middleware/validate');
 const asyncHandler = require('../middleware/asyncHandler');
 const { protect, restrictTo } = require('../middleware/auth');
-const { notFound } = require('../utils/errors');
+const { notFound, badRequest } = require('../utils/errors');
 
 const router = express.Router();
 
@@ -153,6 +153,79 @@ router.put('/:id/reinstate', protect, restrictTo('admin'),
     }
     db.prepare("UPDATE painter_profiles SET suspended_at = NULL, updated_at = datetime('now') WHERE id = ?").run(req.params.id);
     res.json({ success: true, message: `Painter ${req.params.id} reinstated to the roster.` });
+  })
+);
+
+// ─────────────────────────────────────────────────────────────
+// PATCH /api/painters/:id — admin updates a painter's profile.
+// Whitelisted fields only; never accepts password (that goes through
+// /api/admin/users/:id/reset-password) and never lets the admin re-id a row.
+// Used by admin/artisans.html's Edit Painter form.
+// ─────────────────────────────────────────────────────────────
+router.patch('/:id', protect, restrictTo('admin'),
+  asyncHandler(async (req, res) => {
+    const painter = db.prepare('SELECT id, user_id FROM painter_profiles WHERE id = ?').get(req.params.id);
+    if (!painter) throw notFound(`Painter profile ${req.params.id} not found.`);
+
+    // Whitelist what an admin can touch. Anything not in this list is dropped.
+    const PROFILE_FIELDS = ['city', 'area', 'bio', 'experience_years', 'rate_per_day',
+                            'materials_included', 'avatar_color'];
+    const USER_FIELDS    = ['name', 'phone', 'email'];
+
+    const profileSets = []; const profileParams = [];
+    for (const k of PROFILE_FIELDS) {
+      if (req.body && Object.prototype.hasOwnProperty.call(req.body, k)) {
+        profileSets.push(`${k} = ?`);
+        profileParams.push(req.body[k]);
+      }
+    }
+    // `services` is JSON-encoded in storage; accept either an array or a JSON string.
+    if (req.body && Object.prototype.hasOwnProperty.call(req.body, 'services')) {
+      profileSets.push('services = ?');
+      const s = req.body.services;
+      profileParams.push(typeof s === 'string' ? s : JSON.stringify(s || []));
+    }
+
+    const userSets = []; const userParams = [];
+    for (const k of USER_FIELDS) {
+      if (req.body && Object.prototype.hasOwnProperty.call(req.body, k)) {
+        userSets.push(`${k} = ?`);
+        userParams.push(req.body[k]);
+      }
+    }
+
+    if (!profileSets.length && !userSets.length) {
+      throw badRequest('Nothing to update — supply at least one whitelisted field.');
+    }
+
+    db.transaction(() => {
+      if (profileSets.length) {
+        profileParams.push(req.params.id);
+        db.prepare(
+          `UPDATE painter_profiles SET ${profileSets.join(', ')}, updated_at = datetime('now') WHERE id = ?`
+        ).run(...profileParams);
+      }
+      if (userSets.length) {
+        userParams.push(painter.user_id);
+        db.prepare(
+          `UPDATE users SET ${userSets.join(', ')}, updated_at = datetime('now') WHERE id = ?`
+        ).run(...userParams);
+      }
+    })();
+
+    const refreshed = db.prepare(`
+      SELECT pp.id, pp.user_id, pp.city, pp.area, pp.bio, pp.experience_years,
+             pp.rate_per_day, pp.materials_included, pp.services, pp.avatar_color,
+             pp.avg_rating, pp.review_count, pp.suspended_at,
+             u.name, u.phone, u.email, u.role
+        FROM painter_profiles pp JOIN users u ON u.id = pp.user_id
+       WHERE pp.id = ?
+    `).get(req.params.id);
+    if (refreshed) {
+      try { refreshed.services = JSON.parse(refreshed.services || '[]'); } catch (_) { refreshed.services = []; }
+    }
+
+    res.json({ success: true, message: `Painter ${req.params.id} updated.`, painter: refreshed });
   })
 );
 

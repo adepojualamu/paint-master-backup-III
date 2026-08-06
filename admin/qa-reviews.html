@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta name="pm-mode" content="production">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" type="image/png" href="../assets/img/favicon.png" />
+  <title>QA Reviews — Paint Masters</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/admin.css" />
+  <style>
+    /* QA's sign-off queue. Lists every booking sitting in qa_pending —
+       i.e. a painter has marked the job done and is waiting for the QA
+       sub-role to either approve (→ completed + reservations consumed +
+       payout released) or reject (→ in_progress with rework notes). */
+    .qa-tabs { display:flex; gap:8px; flex-wrap:wrap; margin: 18px 0 12px; }
+    .qa-tab {
+      background:#fff; border:1px solid var(--ink-100); border-radius:999px;
+      padding:6px 14px; font-size:0.85rem; font-weight:600; color:var(--ink-700);
+      cursor:pointer; transition:all 0.15s;
+    }
+    .qa-tab:hover { border-color: var(--navy-700); color: var(--navy-900); }
+    .qa-tab.active { background: var(--navy-900); color: #fff; border-color: var(--navy-900); }
+    .qa-tab .count {
+      display:inline-block; padding:0 6px; border-radius:999px;
+      font-size:0.72rem; margin-left:6px;
+      background:var(--ink-100); color:var(--ink-700);
+    }
+    .qa-tab.active .count { background: rgba(255,255,255,0.15); color: inherit; }
+
+    .qa-card {
+      background: #fff; border: 1px solid var(--ink-100); border-radius: var(--radius-lg);
+      margin-bottom: 16px; overflow: hidden;
+    }
+    .qa-head {
+      display: flex; justify-content: space-between; align-items: flex-start;
+      gap: 12px; padding: 16px 20px;
+      background: linear-gradient(180deg, #f7faff, #ffffff);
+      border-bottom: 1px solid var(--ink-100); flex-wrap: wrap;
+    }
+    .qa-head .id { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.85rem; color: var(--ink-500); }
+    .qa-head h3 { margin: 4px 0 6px; font-size: 1.05rem; }
+    .qa-meta { font-size: 0.86rem; color: var(--ink-700); }
+    .qa-meta span { margin-right: 14px; }
+    .qa-meta strong { color: var(--navy-900); }
+
+    .qa-status-pill {
+      font-size:0.7rem; font-weight:800; letter-spacing:0.08em;
+      text-transform:uppercase; padding:4px 10px; border-radius:999px;
+      background:#fef1c9; color:#7a5a00;
+    }
+    .qa-status-pill.completed   { background:#d6f1d8; color:#1a5a23; }
+    .qa-status-pill.in_progress { background:rgba(46,112,201,0.14); color:#1B4B91; }
+
+    .qa-body { padding: 14px 20px; display: grid; grid-template-columns: 1.4fr 1fr; gap: 18px; }
+    @media (max-width: 880px) { .qa-body { grid-template-columns: 1fr; } }
+    .qa-section h4 {
+      font-size:0.72rem; text-transform:uppercase; letter-spacing:0.06em;
+      color:var(--ink-500); margin: 0 0 6px; font-weight:700;
+    }
+    .qa-section p { margin: 0; color: var(--ink-700); font-size: 0.92rem; line-height: 1.5; }
+    .qa-section .num { font-variant-numeric: tabular-nums; font-weight: 700; color: var(--navy-900); }
+
+    .qa-milestones { list-style: none; margin: 0; padding: 0; display:flex; flex-direction:column; gap:6px; }
+    .qa-milestones li {
+      display:flex; gap:8px; padding:6px 10px; background:#f7faff;
+      border-radius:8px; font-size:0.86rem;
+    }
+    .qa-milestones li::before {
+      content:'✓'; color:var(--green); font-weight:800;
+    }
+
+    .qa-actions {
+      padding: 14px 20px; display: grid; grid-template-columns: 1fr auto auto; gap: 10px;
+      align-items: center; background: #fafbfc; border-top: 1px solid var(--ink-100);
+    }
+    @media (max-width: 620px) { .qa-actions { grid-template-columns: 1fr; } }
+    .qa-actions input[type=text] {
+      padding: 9px 12px; border: 1px solid var(--ink-300); border-radius: 8px;
+      font: inherit; font-size: 0.92rem; background: #fff;
+    }
+
+    .qa-empty { padding: 60px 20px; text-align: center; color: var(--ink-500); }
+    .qa-empty strong { display: block; color: var(--navy-900); font-size: 1.1rem; margin-bottom: 6px; }
+    .qa-loading { padding: 40px; text-align: center; color: var(--ink-500); font-size: 0.95rem; }
+  </style>
+</head>
+<body>
+  <div class="admin-shell">
+    <div id="admin-sidebar"></div>
+    <div class="admin-main">
+      <div id="admin-topbar"></div>
+      <div class="main">
+
+        <div class="page-head">
+          <div>
+            <h1>QA Reviews</h1>
+            <div class="sub" style="color:var(--ink-500);">
+              Painters mark jobs done; QA signs them off. Approving releases the painter's payout, locks in the warranty, and updates the inventory ledger.
+            </div>
+          </div>
+          <div class="page-actions">
+            <button class="btn btn-outline" onclick="qaLoad()">↺ Refresh</button>
+          </div>
+        </div>
+
+        <div class="qa-tabs" id="qaTabs">
+          <button class="qa-tab active" data-status="qa_pending">Pending QA <span class="count" id="qaCount-qa_pending">0</span></button>
+          <button class="qa-tab"        data-status="completed">Approved <span class="count" id="qaCount-completed">0</span></button>
+          <button class="qa-tab"        data-status="in_progress">Sent back for rework <span class="count" id="qaCount-in_progress">0</span></button>
+        </div>
+
+        <div id="qaQueue">
+          <div class="qa-loading">Loading queue…</div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <script src="../assets/shared.js"></script>
+  <script src="assets/admin-shared.js"></script>
+  <script>
+    adminMount('qa-reviews');
+
+    const state = {
+      tab:    'qa_pending',
+      bookings: [],
+      counts: { qa_pending: 0, completed: 0, in_progress: 0 },
+    };
+
+    function authHeaders() {
+      const t = (typeof pmAuth !== 'undefined' && pmAuth.token) ? pmAuth.token() : null;
+      return t ? { 'Authorization': `Bearer ${t}` } : {};
+    }
+    function fmtGHS(n) {
+      try { return pmFormatGHS(n); }
+      catch { return 'GHS ' + Math.round(Number(n) || 0).toLocaleString(); }
+    }
+    function esc(s) {
+      return String(s == null ? '' : s)
+        .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+        .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+    }
+    function fmtDate(iso) {
+      if (!iso) return '—';
+      try {
+        const d = new Date(iso);
+        return d.toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' });
+      } catch { return iso; }
+    }
+
+    async function qaLoad() {
+      document.getElementById('qaQueue').innerHTML = '<div class="qa-loading">Loading queue…</div>';
+      try {
+        const res = await fetch(`/api/bookings?status=${state.tab}&limit=100`, { headers: authHeaders() });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const j = await res.json();
+        state.bookings = Array.isArray(j.bookings) ? j.bookings : [];
+        render();
+        qaLoadCounts();
+      } catch (e) {
+        document.getElementById('qaQueue').innerHTML = `
+          <div class="qa-empty">
+            <strong>Couldn't load the queue.</strong>
+            <p>${esc(e.message)} — make sure the backend is running and you're signed in with the QA sub-role.</p>
+          </div>`;
+      }
+    }
+
+    async function qaLoadCounts() {
+      const statuses = ['qa_pending', 'completed', 'in_progress'];
+      await Promise.all(statuses.map(async s => {
+        try {
+          const res = await fetch(`/api/bookings?status=${s}&limit=1`, { headers: authHeaders() });
+          if (!res.ok) return;
+          const j = await res.json();
+          state.counts[s] = j.total || 0;
+          const el = document.getElementById('qaCount-' + s);
+          if (el) el.textContent = state.counts[s];
+        } catch (_) {}
+      }));
+    }
+
+    function render() {
+      const host = document.getElementById('qaQueue');
+      if (!state.bookings.length) {
+        const copy = {
+          qa_pending:  ['Inbox zero.', 'No painters have marked a job done that needs your sign-off.'],
+          completed:   ['No completed jobs yet.', 'Approved jobs land here for the audit trail.'],
+          in_progress: ['Nothing in rework.', 'Jobs you sent back to a painter for rework appear here.'],
+        }[state.tab] || ['Empty.', ''];
+        host.innerHTML = `<div class="qa-empty"><strong>${esc(copy[0])}</strong><p>${esc(copy[1])}</p></div>`;
+        return;
+      }
+      host.innerHTML = state.bookings.map(renderCard).join('');
+    }
+
+    function renderCard(b) {
+      const pillClass = b.status === 'completed' ? 'completed' : (b.status === 'in_progress' ? 'in_progress' : '');
+      const milestones = Array.isArray(b.milestones) ? b.milestones : [];
+      const milestoneList = milestones.length
+        ? `<ul class="qa-milestones">${milestones.slice(-5).map(m => `<li>${esc(m.title || m.label || 'Milestone')}</li>`).join('')}</ul>`
+        : '<p style="color:var(--ink-500);font-style:italic;">No milestones logged yet.</p>';
+      const photoCount = Array.isArray(b.photos) ? b.photos.length : 0;
+      const actions = state.tab === 'qa_pending' ? `
+        <div class="qa-actions">
+          <input type="text" placeholder="Reason if sending back (optional)" data-qa-reason="${esc(b.id)}" />
+          <button class="btn btn-outline" onclick="qaReject('${esc(b.id)}')">Send back</button>
+          <button class="btn btn-primary" onclick="qaApprove('${esc(b.id)}')">Approve →</button>
+        </div>` : '';
+      return `
+        <article class="qa-card" data-booking-id="${esc(b.id)}">
+          <div class="qa-head">
+            <div>
+              <span class="id">${esc(b.id)}</span>
+              <h3>${esc(b.service)} · ${Number(b.area_sqm || 0).toFixed(0)} m² · ${fmtGHS(b.total)}</h3>
+              <div class="qa-meta">
+                <span>Customer <strong>${esc(b.customer_name || '—')}</strong></span>
+                <span>Painter <strong>${esc(b.painter_name || '—')}</strong></span>
+                <span>Job date <strong>${fmtDate(b.job_date)}</strong></span>
+              </div>
+            </div>
+            <span class="qa-status-pill ${pillClass}">${esc(b.status.replace('_', ' '))}</span>
+          </div>
+          <div class="qa-body">
+            <div class="qa-section">
+              <h4>Recent milestones</h4>
+              ${milestoneList}
+              ${photoCount ? `<p style="margin-top:8px;font-size:0.84rem;color:var(--ink-500);">${photoCount} photo${photoCount === 1 ? '' : 's'} uploaded.</p>` : ''}
+            </div>
+            <div class="qa-section">
+              <h4>Address</h4>
+              <p>${esc(b.address || '—')}</p>
+              ${b.quote_id ? `<p style="margin-top:8px;font-size:0.84rem;color:var(--ink-500);">Quote <span style="font-family:ui-monospace,Menlo,monospace;color:var(--navy-900);">${esc(b.quote_id)}</span></p>` : ''}
+              ${b.notes ? `<div style="margin-top:10px;padding:8px 10px;background:#f7faff;border-radius:6px;font-size:0.84rem;white-space:pre-wrap;">${esc(b.notes)}</div>` : ''}
+            </div>
+          </div>
+          ${actions}
+        </article>`;
+    }
+
+    async function qaApprove(bookingId) {
+      const card = document.querySelector(`[data-booking-id="${bookingId}"]`);
+      const btn  = card && card.querySelector('button.btn-primary');
+      if (btn) { btn.disabled = true; btn.textContent = 'Approving…'; }
+      try {
+        const res = await fetch(`/api/bookings/${encodeURIComponent(bookingId)}/qa-approve`, {
+          method:'PUT', headers: authHeaders(),
+        });
+        const j = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error((j && j.message) || 'HTTP ' + res.status);
+        if (typeof pmToast === 'function') pmToast(j.message || `Booking ${bookingId} approved.`, 'success');
+        qaLoad();
+      } catch (e) {
+        if (btn) { btn.disabled = false; btn.textContent = 'Approve →'; }
+        if (typeof pmToast === 'function') pmToast(e.message, 'error');
+        else alert('Approve failed: ' + e.message);
+      }
+    }
+
+    async function qaReject(bookingId) {
+      const reasonInput = document.querySelector(`[data-qa-reason="${bookingId}"]`);
+      const reason = reasonInput ? reasonInput.value.trim() : '';
+      const card = document.querySelector(`[data-booking-id="${bookingId}"]`);
+      const btn  = card && card.querySelector('button.btn-outline');
+      if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
+      try {
+        const res = await fetch(`/api/bookings/${encodeURIComponent(bookingId)}/qa-reject`, {
+          method:'PUT',
+          headers: { 'Content-Type': 'application/json', ...authHeaders() },
+          body: JSON.stringify({ reason }),
+        });
+        const j = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error((j && j.message) || 'HTTP ' + res.status);
+        if (typeof pmToast === 'function') pmToast(j.message || `Booking ${bookingId} sent back for rework.`, 'success');
+        qaLoad();
+      } catch (e) {
+        if (btn) { btn.disabled = false; btn.textContent = 'Send back'; }
+        if (typeof pmToast === 'function') pmToast(e.message, 'error');
+        else alert('Reject failed: ' + e.message);
+      }
+    }
+
+    document.getElementById('qaTabs').addEventListener('click', (e) => {
+      const btn = e.target.closest('.qa-tab'); if (!btn) return;
+      document.querySelectorAll('.qa-tab').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      state.tab = btn.dataset.status;
+      qaLoad();
+    });
+
+    qaLoad();
+  </script>
+</body>
+</html>

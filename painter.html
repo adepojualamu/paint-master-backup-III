@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="en">
 <head>
+  <meta name="pm-mode" content="production">
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="icon" type="image/png" href="assets/img/favicon.png" />
@@ -311,31 +312,39 @@
     const weekEnd  = isoOffset(6);
     const monthAgo = isoOffset(-30);
 
-    const todayJobs    = PAINTER_JOBS_DEMO.filter(j => j.date === today && j.stage !== 'completed');
-    const weekJobs     = PAINTER_JOBS_DEMO.filter(j => j.date >= today && j.date <= weekEnd && j.stage !== 'completed');
-    const monthDelivered = PAINTER_JOBS_DEMO.filter(j => j.stage === 'completed' && j.date >= monthAgo);
+    // Filtered views over PAINTER_JOBS_DEMO. Wrapped in helpers so they
+    // recompute each render — that lets an async API load swap the data
+    // under the dashboard and just call renderAll() to refresh everything.
+    function _getTodayJobs()      { return PAINTER_JOBS_DEMO.filter(j => j.date === today && j.stage !== 'completed' && j.stage !== 'cancelled'); }
+    function _getWeekJobs()       { return PAINTER_JOBS_DEMO.filter(j => j.date >= today && j.date <= weekEnd && j.stage !== 'completed' && j.stage !== 'cancelled'); }
+    function _getMonthDelivered() { return PAINTER_JOBS_DEMO.filter(j => j.stage === 'completed' && j.date >= monthAgo); }
 
-    document.getElementById('statTodayCount').textContent = todayJobs.length;
-    document.getElementById('statTodaySub').textContent   = todayJobs.length === 0 ? 'Free day' : (todayJobs.length === 1 ? 'Scheduled job' : 'Scheduled jobs');
-    document.getElementById('statWeekCount').textContent  = weekJobs.length;
-    document.getElementById('statWeekSub').textContent    = `Through ${new Date(weekEnd).toLocaleDateString('en-GB', { weekday:'short', day:'numeric', month:'short' })}`;
+    function renderStats() {
+      const todayJobs    = _getTodayJobs();
+      const weekJobs     = _getWeekJobs();
+      const monthDelivered = _getMonthDelivered();
 
-    // Commission card — live numbers from the demo seed so the card isn't
-    // dead. Per-painter commission rate (default 90%, set in admin) overrides
-    // the platform-wide split. Warranty hold is always 5% of the commission
-    // and releases at 90 days with no claim.
-    const myCommissionRate = (typeof me !== 'undefined' && me && Number.isFinite(me.commissionRate))
-      ? Number(me.commissionRate) / 100
-      : 0.90;
-    const monthGross    = monthDelivered.reduce((s, j) => s + j.amount, 0);
-    const monthNet      = Math.round(monthGross * myCommissionRate);
-    const monthWarranty = Math.round(monthNet   * 0.05);
-    const monthReleased = monthNet - monthWarranty;
-    document.getElementById('earnJobs').textContent     = monthDelivered.length;
-    document.getElementById('earnRateLabel').textContent = (myCommissionRate * 100).toFixed(0) + '%';
-    document.getElementById('earnNet').textContent      = 'GHS ' + monthNet.toLocaleString();
-    document.getElementById('earnHold').textContent     = 'GHS ' + monthWarranty.toLocaleString();
-    document.getElementById('earnReleased').textContent = 'GHS ' + monthReleased.toLocaleString();
+      document.getElementById('statTodayCount').textContent = todayJobs.length;
+      document.getElementById('statTodaySub').textContent   = todayJobs.length === 0 ? 'Free day' : (todayJobs.length === 1 ? 'Scheduled job' : 'Scheduled jobs');
+      document.getElementById('statWeekCount').textContent  = weekJobs.length;
+      document.getElementById('statWeekSub').textContent    = `Through ${new Date(weekEnd).toLocaleDateString('en-GB', { weekday:'short', day:'numeric', month:'short' })}`;
+
+      // Commission card. Per-painter commission rate (default 90%, set in
+      // admin) overrides the platform-wide split. Warranty hold is 5% of the
+      // commission and releases at 90 days with no claim.
+      const myCommissionRate = (typeof me !== 'undefined' && me && Number.isFinite(me.commissionRate))
+        ? Number(me.commissionRate) / 100
+        : 0.90;
+      const monthGross    = monthDelivered.reduce((s, j) => s + (j.amount || 0), 0);
+      const monthNet      = Math.round(monthGross * myCommissionRate);
+      const monthWarranty = Math.round(monthNet   * 0.05);
+      const monthReleased = monthNet - monthWarranty;
+      document.getElementById('earnJobs').textContent      = monthDelivered.length;
+      document.getElementById('earnRateLabel').textContent = (myCommissionRate * 100).toFixed(0) + '%';
+      document.getElementById('earnNet').textContent       = 'GHS ' + monthNet.toLocaleString();
+      document.getElementById('earnHold').textContent      = 'GHS ' + monthWarranty.toLocaleString();
+      document.getElementById('earnReleased').textContent  = 'GHS ' + monthReleased.toLocaleString();
+    }
 
     // ─────────────────────────────────────────────
     // Today's assignment card. If multiple jobs are scheduled today (rare),
@@ -343,6 +352,8 @@
     // ─────────────────────────────────────────────
     function renderToday() {
       const host = document.getElementById('todayHost');
+      const todayJobs = _getTodayJobs();
+      const weekJobs  = _getWeekJobs();
       if (!todayJobs.length) {
         host.innerHTML = `
           <div class="today-empty">
@@ -353,37 +364,108 @@
       }
       const j = todayJobs[0];
       const more = todayJobs.length > 1 ? `<a href="#" style="color:rgba(255,255,255,0.85);text-decoration:underline;font-size:0.86rem;">+${todayJobs.length - 1} more today</a>` : '';
+
+      // Action buttons. The painter sees one of three primary actions:
+      //   1. "Confirm assignment" — when the dispatcher just assigned them
+      //      and the backend wants a confirm (status='pending').
+      //   2. "Mark QA-ready" — when they're on site, OR (in API mode) for
+      //      any confirmed-today job: the backend allows confirmed → qa_pending
+      //      directly so we skip the local-only check-in step.
+      //   3. "Check in on site" — the legacy demo affordance for fallback
+      //      mode where there's no API to roundtrip the on-site stage.
+      let primary, secondary;
+      if (j.pendingConfirm) {
+        primary   = `<button class="btn btn-gold" onclick="confirmAssignment('${j.ref}')">✓ Confirm assignment</button>`;
+        secondary = `<button class="btn btn-ghost" style="color:#fff;border-color:rgba(255,255,255,0.4);" onclick="openJob('${j.ref}')">View job details</button>`;
+      } else if (j.stage === 'on_site') {
+        primary   = `<button class="btn btn-gold" onclick="markComplete('${j.ref}')">✓ Mark QA-ready</button>`;
+        secondary = `<button class="btn btn-ghost" style="color:#fff;border-color:rgba(255,255,255,0.4);" onclick="messageCustomer('${j.ref}')">💬 Message customer</button>`;
+      } else if (j._apiMode) {
+        primary   = `<button class="btn btn-gold" onclick="markComplete('${j.ref}')">✓ Mark QA-ready</button>`;
+        secondary = `<button class="btn btn-ghost" style="color:#fff;border-color:rgba(255,255,255,0.4);" onclick="openJob('${j.ref}')">View job details</button>`;
+      } else {
+        primary   = `<button class="btn btn-gold" onclick="checkIn('${j.ref}')">📍 Check in on site</button>`;
+        secondary = `<button class="btn btn-ghost" style="color:#fff;border-color:rgba(255,255,255,0.4);" onclick="openJob('${j.ref}')">View job details</button>`;
+      }
+
       host.innerHTML = `
         <div class="today-card">
           <div>
             <div class="ref-row">
-              <span class="pill">${j.stage === 'on_site' ? 'On site' : 'Today'}</span>
+              <span class="pill">${j.pendingConfirm ? 'Needs confirm' : (j.stage === 'on_site' ? 'On site' : 'Today')}</span>
               <span style="color:rgba(255,255,255,0.7);font-size:0.86rem;">${j.ref}</span>
               ${more}
             </div>
             <h3>${esc(j.service)} · ${esc(j.customer)}</h3>
             <div class="meta">${esc(j.address)} · ${esc(j.window)}</div>
           </div>
-          <div class="actions">
-            ${j.stage === 'on_site'
-              ? `<button class="btn btn-gold" onclick="markComplete('${j.ref}')">✓ Mark QA-ready</button>
-                 <button class="btn btn-ghost" style="color:#fff;border-color:rgba(255,255,255,0.4);" onclick="messageCustomer('${j.ref}')">💬 Message customer</button>`
-              : `<button class="btn btn-gold" onclick="checkIn('${j.ref}')">📍 Check in on site</button>
-                 <button class="btn btn-ghost" style="color:#fff;border-color:rgba(255,255,255,0.4);" onclick="openJob('${j.ref}')">View job details</button>`}
-          </div>
+          <div class="actions">${primary}${secondary}</div>
         </div>`;
     }
+    // Actions. In API mode a job carries `_bookingId` (the real booking id
+    // from /api/bookings) and `_apiMode = true`; the action functions then
+    // hit the real backend endpoint. In demo mode they mutate the job in
+    // place so the dashboard stays responsive without a server.
     function checkIn(ref) {
-      mutateJobStage(ref, 'on_site');
+      const j = PAINTER_JOBS_DEMO.find(x => x.ref === ref);
+      if (!j) return;
+      // No backend endpoint exists for check-in (the lifecycle goes
+      // confirmed → qa_pending directly via /complete). We mark on_site
+      // locally as a UX nicety; the next API reload re-syncs from the DB.
+      j.stage = 'on_site';
       emitPainterActivity({ kind: 'painter_checkin', title: `${meName()} checked in`, sub: jobLine(ref) });
-      pmToast('Checked in — admin notified');
-      renderToday(); renderCalendar(); renderUpcoming();
+      pmToast(j._apiMode ? 'On-site marked locally.' : 'Checked in — admin notified');
+      renderAll();
     }
-    function markComplete(ref) {
-      mutateJobStage(ref, 'qa');
+
+    async function markComplete(ref) {
+      const j = PAINTER_JOBS_DEMO.find(x => x.ref === ref);
+      if (!j) return;
+      if (j._apiMode && j._bookingId) {
+        try {
+          const res = await fetch(`/api/bookings/${encodeURIComponent(j._bookingId)}/complete`, {
+            method: 'PUT',
+            headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+          });
+          const body = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error((body && body.message) || ('HTTP ' + res.status));
+          pmToast('Marked QA-ready — dispatch will inspect');
+          await loadFromAPI();   // refetch so the UI reflects qa_pending
+          renderAll();
+        } catch (e) {
+          pmToast('Could not mark QA-ready: ' + (e && e.message));
+        }
+        return;
+      }
+      j.stage = 'qa';
       emitPainterActivity({ kind: 'painter_complete', title: `${meName()} marked job QA-ready`, sub: jobLine(ref) });
       pmToast('Marked QA-ready — dispatch will inspect');
-      renderToday(); renderCalendar(); renderUpcoming();
+      renderAll();
+    }
+
+    async function confirmAssignment(ref) {
+      const j = PAINTER_JOBS_DEMO.find(x => x.ref === ref);
+      if (!j) return;
+      if (j._apiMode && j._bookingId) {
+        try {
+          const res = await fetch(`/api/bookings/${encodeURIComponent(j._bookingId)}/confirm`, {
+            method: 'PUT',
+            headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+          });
+          const body = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error((body && body.message) || ('HTTP ' + res.status));
+          pmToast('Assignment confirmed.');
+          await loadFromAPI();
+          renderAll();
+        } catch (e) {
+          pmToast('Could not confirm: ' + (e && e.message));
+        }
+        return;
+      }
+      j.pendingConfirm = false;
+      j.stage = 'scheduled';
+      pmToast('Assignment confirmed.');
+      renderAll();
     }
     function meName() { return (me && me.name) ? me.name.split(' ')[0] : 'Painter'; }
     function jobLine(ref) { const j = PAINTER_JOBS_DEMO.find(x => x.ref === ref); return j ? `${ref} · ${j.service} · ${j.customer}` : ref; }
@@ -481,33 +563,72 @@
     // Job popover — opens when a calendar tile or upcoming row is clicked.
     // Quick actions match what's available given the job's current stage.
     // ─────────────────────────────────────────────
+    let _popoverRef = null;
     function openJobPopover(job, alsoToday) {
+      _popoverRef = job.ref;
       const back = document.getElementById('popBack');
       document.getElementById('popTitle').textContent = `${job.service}`;
       document.getElementById('popRef').textContent   = `${job.ref} · ${new Date(job.date).toLocaleDateString('en-GB', { weekday:'long', day:'numeric', month:'short' })}`;
       const isToday = job.date === today;
-      document.getElementById('popBody').innerHTML = `
-        <div class="row"><span class="lbl">Customer</span><strong>${esc(job.customer)}</strong></div>
-        <div class="row"><span class="lbl">Address</span><strong style="text-align:right;max-width:60%;">${esc(job.address)}</strong></div>
-        <div class="row"><span class="lbl">Window</span><strong>${esc(job.window)}</strong></div>
-        <div class="row"><span class="lbl">Dates</span><strong>${new Date(job.date).toLocaleDateString('en-GB',{day:'numeric',month:'short'})}${job.endDate && job.endDate !== job.date ? ' → ' + new Date(job.endDate).toLocaleDateString('en-GB',{day:'numeric',month:'short'}) : ''}</strong></div>
-        <div class="row"><span class="lbl">Duration</span><strong>${job.durationDays} day${job.durationDays===1?'':'s'}</strong></div>
-        <div class="row"><span class="lbl">Quoted total</span><strong>GHS ${job.amount.toLocaleString()}</strong></div>
-        ${alsoToday.length ? `<div class="row"><span class="lbl">Also today</span><strong>${alsoToday.map(j=>j.ref).join(', ')}</strong></div>` : ''}
-      `;
+
+      // popBody is re-rendered when lazy-loaded photos arrive, so the body
+      // assembly lives in a local function we can call twice.
+      function renderBody() {
+        const qPhotos = Array.isArray(job.quote_photos) ? job.quote_photos : [];
+        const photosHtml = qPhotos.length ? `
+          <div class="row" style="align-items:flex-start;"><span class="lbl">Photos</span>
+            <div style="display:flex;flex-wrap:wrap;gap:6px;max-width:60%;justify-content:flex-end;">
+              ${qPhotos.map(p => `<a href="${esc(p.url)}" target="_blank" rel="noopener" title="${esc(p.original_name || 'space photo')}" style="display:block;width:58px;height:58px;border-radius:6px;overflow:hidden;border:1px solid rgba(0,0,0,0.08);"><img src="${esc(p.url)}" alt="space photo" loading="lazy" style="width:100%;height:100%;object-fit:cover;display:block;" /></a>`).join('')}
+            </div>
+          </div>` : '';
+        document.getElementById('popBody').innerHTML = `
+          <div class="row"><span class="lbl">Customer</span><strong>${esc(job.customer)}</strong></div>
+          <div class="row"><span class="lbl">Address</span><strong style="text-align:right;max-width:60%;">${esc(job.address)}</strong></div>
+          <div class="row"><span class="lbl">Window</span><strong>${esc(job.window)}</strong></div>
+          <div class="row"><span class="lbl">Dates</span><strong>${new Date(job.date).toLocaleDateString('en-GB',{day:'numeric',month:'short'})}${job.endDate && job.endDate !== job.date ? ' → ' + new Date(job.endDate).toLocaleDateString('en-GB',{day:'numeric',month:'short'}) : ''}</strong></div>
+          <div class="row"><span class="lbl">Duration</span><strong>${job.durationDays} day${job.durationDays===1?'':'s'}</strong></div>
+          <div class="row"><span class="lbl">Quoted total</span><strong>GHS ${job.amount.toLocaleString()}</strong></div>
+          ${alsoToday.length ? `<div class="row"><span class="lbl">Also today</span><strong>${alsoToday.map(j=>j.ref).join(', ')}</strong></div>` : ''}
+          ${photosHtml}
+        `;
+      }
+      renderBody();
+
+      // Lazy-load the customer space photos for API-sourced bookings. The
+      // list endpoint doesn't include them (they hang off the linked quote),
+      // so we fetch the booking detail on first open and patch the job in
+      // place. The _popoverRef guard prevents a slow response from stomping
+      // a popover the painter has since navigated away from.
+      if (job._apiMode && job._bookingId && !job._photosLoaded) {
+        job._photosLoaded = true;
+        fetch(`/api/bookings/${encodeURIComponent(job._bookingId)}`, { headers: authHeaders() })
+          .then(r => r.ok ? r.json() : null)
+          .then(data => {
+            if (!data || !Array.isArray(data.quote_photos) || !data.quote_photos.length) return;
+            job.quote_photos = data.quote_photos;
+            if (_popoverRef === job.ref) renderBody();
+          })
+          .catch(() => { /* swallow — popover stays photo-less */ });
+      }
       // Build action buttons based on stage.
       const acts = [];
       acts.push(`<a class="btn btn-outline" href="track.html?ref=${encodeURIComponent(job.ref)}">Open job tracker</a>`);
-      if (isToday && job.stage === 'dispatched') {
-        acts.push(`<button class="btn btn-gold" onclick="checkIn('${job.ref}'); closePop();">📍 Check in</button>`);
+      if (job.pendingConfirm) {
+        acts.push(`<button class="btn btn-gold" onclick="confirmAssignment('${job.ref}'); closePop();">✓ Confirm assignment</button>`);
       } else if (isToday && job.stage === 'on_site') {
         acts.push(`<button class="btn btn-gold" onclick="markComplete('${job.ref}'); closePop();">✓ Mark QA-ready</button>`);
+      } else if (isToday && job._apiMode) {
+        // In API mode the backend lets confirmed → qa_pending directly, so
+        // skip the local-only check-in and offer Mark QA-ready.
+        acts.push(`<button class="btn btn-gold" onclick="markComplete('${job.ref}'); closePop();">✓ Mark QA-ready</button>`);
+      } else if (isToday && job.stage === 'dispatched') {
+        acts.push(`<button class="btn btn-gold" onclick="checkIn('${job.ref}'); closePop();">📍 Check in</button>`);
       }
       acts.push(`<button class="btn btn-ghost" onclick="closePop();">Close</button>`);
       document.getElementById('popActions').innerHTML = acts.join('');
       back.classList.add('show');
     }
-    function closePop() { document.getElementById('popBack').classList.remove('show'); }
+    function closePop() { _popoverRef = null; document.getElementById('popBack').classList.remove('show'); }
     function openJob(ref) { const j = PAINTER_JOBS_DEMO.find(x=>x.ref===ref); if (j) openJobPopover(j, []); }
     document.getElementById('popBack').addEventListener('click', e => {
       if (e.target.id === 'popBack') closePop();
@@ -645,15 +766,112 @@
       }
     });
 
-    // First paint.
-    renderToday();
-    renderCalendar();
-    renderUpcoming();
+    // ─────────────────────────────────────────────
+    // API integration
+    //
+    // The dashboard's primary data source is GET /api/bookings. The backend
+    // scopes results to the signed-in painter automatically, so we don't
+    // need to filter client-side. Each booking maps onto the same shape
+    // PAINTER_JOBS_DEMO uses, so the existing renderers don't have to learn
+    // anything new — they just see live rows. When the API is unreachable
+    // (server down, not signed in) the demo seed stays in place so the
+    // dashboard always renders.
+    // ─────────────────────────────────────────────
+    function authHeaders() {
+      const t = (typeof pmAuth !== 'undefined' && pmAuth.token) ? pmAuth.token() : null;
+      return t ? { 'Authorization': `Bearer ${t}` } : {};
+    }
+
+    // booking.status (backend) → painter UI stage
+    function mapStatus(s) {
+      switch (s) {
+        case 'pending':            return 'dispatched';   // assigned, awaiting confirm
+        case 'confirmed':          return 'scheduled';
+        case 'in_progress':        return 'on_site';
+        case 'qa_pending':         return 'qa';
+        case 'completed':          return 'completed';
+        case 'cancelled':          return 'cancelled';
+        case 'pending_assignment': return 'dispatched';   // shouldn't surface (painter scope filters it)
+        default:                   return 'scheduled';
+      }
+    }
+
+    function bookingToPainterJob(b) {
+      let endDate = b.job_date;
+      try {
+        const d = new Date(b.job_date);
+        d.setDate(d.getDate() + Math.max(0, (b.duration_days || 1) - 1));
+        endDate = d.toISOString().slice(0, 10);
+      } catch (_) {}
+      // Pull a rough "city" from the address — last comma-separated segment.
+      const addr = b.address || '—';
+      const cityMatch = addr.match(/[^,]+$/);
+      const city = (cityMatch ? cityMatch[0] : addr).trim() || addr;
+      return {
+        ref:            b.id,
+        stage:          mapStatus(b.status),
+        date:           b.job_date,
+        endDate,
+        service:        b.service || 'Painting',
+        customer:       b.customer_name || '—',
+        city,
+        address:        addr,
+        amount:         Number(b.total) || 0,
+        durationDays:   b.duration_days || 1,
+        window:         'Morning',                    // backend has no window field today
+        pendingConfirm: b.status === 'pending',
+        _bookingId:     b.id,
+        _apiMode:       true,
+      };
+    }
+
+    async function fetchAllBookings() {
+      const out = [];
+      for (let page = 1; page <= 10; page++) {
+        const res = await fetch(`/api/bookings?limit=100&page=${page}`, { headers: authHeaders() });
+        if (!res.ok) throw new Error('Bookings API: HTTP ' + res.status);
+        const j = await res.json();
+        const rows = Array.isArray(j.bookings) ? j.bookings : [];
+        out.push(...rows);
+        if (page >= (j.pages || 1)) break;
+      }
+      return out;
+    }
+
+    async function loadFromAPI() {
+      try {
+        const bookings = await fetchAllBookings();
+        const mapped = bookings
+          .filter(b => b.status !== 'cancelled')   // hide cancelled from the painter dashboard
+          .map(bookingToPainterJob);
+        // PAINTER_JOBS_DEMO is `const`, but its CONTENTS aren't. Splice keeps
+        // the array reference stable for any captured closures.
+        PAINTER_JOBS_DEMO.splice(0, PAINTER_JOBS_DEMO.length, ...mapped);
+        return true;
+      } catch (e) {
+        console.warn('Painter API load failed:', e && e.message);
+        return false;
+      }
+    }
+
+    function renderAll() {
+      renderStats();
+      renderToday();
+      renderCalendar();
+      renderUpcoming();
+      if (typeof renderNotifications === 'function') renderNotifications();
+    }
+
+    // First paint with the demo seed so the dashboard isn't blank for an
+    // instant; then load real bookings and re-render. When the API is
+    // unreachable the demo seed stays in place.
+    renderAll();
     seedPainterNotificationsIfEmpty();
     renderNotifications();
     if (typeof pmActivity !== 'undefined') {
       pmActivity.listen(() => renderNotifications());
     }
+    loadFromAPI().then(ok => { if (ok) renderAll(); });
   </script>
 </body>
 </html>

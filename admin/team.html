@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="en">
 <head>
+  <meta name="pm-mode" content="production">
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="icon" type="image/png" href="../assets/img/favicon.png" />
@@ -14,10 +15,22 @@
     @media (max-width: 1000px) { .team-grid { grid-template-columns: 1fr; } }
 
     .member-row {
-      display: grid; grid-template-columns: 48px 1fr auto auto; gap: 14px;
+      display: grid; grid-template-columns: 48px 1fr auto auto auto; gap: 14px;
       align-items: center; padding: 14px 16px;
       border: 1px solid var(--ink-100); border-radius: 12px;
       background: #fff;
+    }
+    @media (max-width: 720px) { .member-row { grid-template-columns: 48px 1fr; } .member-row > :nth-child(n+3) { grid-column: 2 / -1; } }
+
+    .sub-role-select {
+      padding: 6px 10px;
+      border: 1px solid var(--ink-300); border-radius: 8px;
+      font: inherit; font-size: 0.84rem; background: #fff; color: var(--navy-900);
+      cursor: pointer; min-width: 160px;
+    }
+    .sub-role-select:disabled { background: #f7faff; cursor: not-allowed; color: var(--ink-500); }
+    .sub-role-readonly {
+      font-size: 0.78rem; color: var(--ink-500); font-style: italic;
     }
     .member-row + .member-row { margin-top: 10px; }
     .member-row .avatar {
@@ -207,6 +220,10 @@
         host.innerHTML = `<div style="text-align:center;padding:30px;border:1px dashed var(--ink-300);border-radius:12px;color:var(--ink-500);">No team members yet — invite the first one →</div>`;
         return;
       }
+      // Only super_admin can edit sub-roles. Anyone else sees a read-only label.
+      const me     = (typeof pmAuth !== 'undefined' && pmAuth.user) ? pmAuth.user() : null;
+      const meIsSuper = !!me && (me.role === 'super' || me.sub_role === 'super_admin');
+
       host.innerHTML = team.map(m => {
         const roleLabel = m.role === 'super' ? 'Super Admin' : m.role === 'manager' ? 'Manager' : 'Admin';
         const roleClass = m.role === 'super' ? 'role-super' : m.role === 'manager' ? 'role-mgr' : 'role-admin';
@@ -214,6 +231,26 @@
         const isLastSuper = m.role === 'super' && supers === 1;
         const initials = (m.name || 'AD').split(/\s+/).map(s => s[0]).slice(0, 2).join('').toUpperCase();
         const joined   = m.created_at ? fmtDate(m.created_at) : '—';
+        const cur = m.sub_role || '';
+
+        // Sub-role widget — editable when the signed-in user is super_admin,
+        // otherwise a read-only label. Customers/painters obviously never appear here.
+        let subRoleHtml;
+        if (meIsSuper) {
+          subRoleHtml = `
+            <select class="sub-role-select" onchange="updateSubRole('${m.id}', this.value, this)">
+              <option value=""                  ${cur === ''                  ? 'selected' : ''}>— No sub-role —</option>
+              <option value="super_admin"       ${cur === 'super_admin'       ? 'selected' : ''}>Super Admin</option>
+              <option value="dispatcher"        ${cur === 'dispatcher'        ? 'selected' : ''}>Dispatcher</option>
+              <option value="qa"                ${cur === 'qa'                ? 'selected' : ''}>QA</option>
+              <option value="finance"           ${cur === 'finance'           ? 'selected' : ''}>Finance</option>
+              <option value="inventory_manager" ${cur === 'inventory_manager' ? 'selected' : ''}>Inventory Manager</option>
+            </select>`;
+        } else {
+          const label = cur ? cur.replace('_', ' ') : '—';
+          subRoleHtml = `<span class="sub-role-readonly" title="Only a super admin can change sub-roles">${label}</span>`;
+        }
+
         return `
           <div class="member-row" data-id="${m.id}">
             <div class="avatar">${initials}</div>
@@ -223,6 +260,7 @@
               <small style="display:block;margin-top:2px;">Joined ${joined}</small>
             </div>
             <span class="role-pill ${roleClass}">${roleLabel}</span>
+            ${subRoleHtml}
             <div class="row-actions">
               <button onclick="editMember('${m.id}')">Edit</button>
               <button class="danger" onclick="removeMember('${m.id}')" ${isLastSuper ? 'disabled title="Promote another super admin first"' : ''}>Remove</button>
@@ -230,6 +268,53 @@
           </div>
         `;
       }).join('');
+    }
+
+    // PUT /api/admin/users/:id/sub-role + mirror locally in pmUsers so the
+    // change survives without a backend (demo mode) and so the sub-role
+    // dropdown shows the right value on the next render.
+    async function updateSubRole(id, value, selectEl) {
+      const m = pmUsers.findById(id);
+      if (!m) return;
+      const previous = m.sub_role || '';
+      if (previous === value) return;
+
+      // Disable while in flight so the user can't fire two updates.
+      if (selectEl) selectEl.disabled = true;
+
+      let backendOk = false;
+      try {
+        const tok = (typeof pmAuth !== 'undefined' && pmAuth.token) ? pmAuth.token() : '';
+        // Numeric backend IDs only; team-seed IDs are prefixed with 'seed:'.
+        const apiId = String(id).replace(/^seed:/, '');
+        const res = await fetch(`/api/admin/users/${encodeURIComponent(apiId)}/sub-role`, {
+          method:  'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(tok ? { 'Authorization': `Bearer ${tok}` } : {}),
+          },
+          body: JSON.stringify({ sub_role: value || null }),
+        });
+        const j = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error((j && j.message) || ('HTTP ' + res.status));
+        backendOk = true;
+      } catch (e) {
+        // Rollback the dropdown and surface the error. Demo seed users
+        // (whose backend row doesn't exist) will land here — we still
+        // update locally below so the UI stays consistent.
+        console.warn('sub-role PUT failed:', e && e.message);
+      }
+
+      // Update pmUsers regardless so the demo store stays in sync.
+      pmUsers.update(id, { sub_role: value || null });
+
+      if (backendOk) {
+        toast(value ? `${m.name} → ${value.replace('_', ' ')}` : `${m.name}'s sub-role cleared.`);
+      } else {
+        toast(`${m.name}: backend unreachable, change saved locally only.`, 'warn');
+      }
+      if (selectEl) selectEl.disabled = false;
+      render();
     }
 
     function addMember() {
